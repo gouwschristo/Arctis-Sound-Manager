@@ -227,6 +227,19 @@ device:
         default: 0x00
         update_sequence: [0x39, 'value']
     audio:
+      audio_source:
+        # audio_mode (0xAA): which link the earbuds play, 0 the 2.4 GHz
+        # dongle, 1 Bluetooth. GG has no control of its own for it: switching
+        # its EQ panel between the Wireless and Bluetooth tabs sends this
+        # (the Quick Switch a button can also be mapped to). On Bluetooth,
+        # this computer's audio through the dongle stops reaching the
+        # earbuds. Not yet tried on real GameBuds.
+        type: button_group
+        default: 0x00
+        update_sequence: [0xaa, 'value']
+        values_mapping:
+          0x00: audio_source_dongle
+          0x01: audio_source_bluetooth
       noise_cancelling:
         type: button_group
         values_mapping:

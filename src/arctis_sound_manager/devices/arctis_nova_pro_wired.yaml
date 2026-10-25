@@ -159,6 +159,69 @@ device:
           0x03: high
         default: 0x00
         update_sequence: [0x06, 0x39, 'value']
+    station:
+      # What GG 122's page for the Nova Pro (wired GameDAC) offers next to
+      # gain, mic volume and sidetone; frames from base_arctis_nova_pro.
+      # Not yet tried on a real one.
+      line_out:
+        # line_out_mode (0x43): 1 speakers, 2 streaming.
+        type: button_group
+        default: 0x01
+        update_sequence: [0x06, 0x43, 'value']
+        values_mapping:
+          0x01: speaker
+          0x02: stream
+      # stream_mix (0x47): main, an unused byte, aux, mic, each 0-100 (GG
+      # steps them by 5). Main goes in the unused byte too, as the Nova Pro
+      # Wireless profile does with the same frame on hardware that works.
+      line_out_stream_main_volume:
+        type: slider
+        min: 0
+        max: 100
+        step: 5
+        min_label: perc_0
+        max_label: perc_100
+        default: 100
+        visible_when:
+          line_out: 2
+        update_sequence: [0x06, 0x47, 'value', 'value', 'settings.line_out_stream_aux_volume', 'settings.line_out_stream_mic_volume']
+      line_out_stream_aux_volume:
+        type: slider
+        min: 0
+        max: 100
+        step: 5
+        min_label: perc_0
+        max_label: perc_100
+        default: 100
+        visible_when:
+          line_out: 2
+        update_sequence: [0x06, 0x47, 'settings.line_out_stream_main_volume', 'settings.line_out_stream_main_volume', 'value', 'settings.line_out_stream_mic_volume']
+      line_out_stream_mic_volume:
+        type: slider
+        min: 0
+        max: 100
+        step: 5
+        min_label: perc_0
+        max_label: perc_100
+        default: 100
+        visible_when:
+          line_out: 2
+        update_sequence: [0x06, 0x47, 'settings.line_out_stream_main_volume', 'settings.line_out_stream_main_volume', 'settings.line_out_stream_aux_volume', 'value']
+      station_screen_saver_timeout:
+        # dim_timer (0x83): minutes as is, 0-60; GG lists 0 (off), 1, 5,
+        # 10, 15, 30 and 60. Unlike the Elite, no index: the spec takes
+        # the minutes themselves.
+        type: button_group
+        default: 1
+        update_sequence: [0x06, 0x83, 'value']
+        values_mapping:
+          0: never
+          1: 1_minute
+          5: 5_minutes
+          10: 10_minutes
+          15: 15_minutes
+          30: 30_minutes
+          60: 60_minutes
 
   status_parse:
     station_volume:

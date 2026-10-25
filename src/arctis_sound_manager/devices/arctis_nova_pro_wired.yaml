@@ -208,20 +208,21 @@ device:
           line_out: 2
         update_sequence: [0x06, 0x47, 'settings.line_out_stream_main_volume', 'settings.line_out_stream_main_volume', 'settings.line_out_stream_aux_volume', 'value']
       station_screen_saver_timeout:
-        # dim_timer (0x83): minutes as is, 0-60; GG lists 0 (off), 1, 5,
-        # 10, 15, 30 and 60. Unlike the Elite, no index: the spec takes
-        # the minutes themselves.
+        # dim_timer (0x83). The struct reads "minutes 0-60", but GG's api
+        # runs the value through transform_minutes_to_dim_timer first: what
+        # goes on the wire is an index, 0-6 for off, 1, 5, 10, 15, 30 and
+        # 60 minutes, as on the Elite.
         type: button_group
-        default: 1
+        default: 0x01
         update_sequence: [0x06, 0x83, 'value']
         values_mapping:
-          0: never
-          1: 1_minute
-          5: 5_minutes
-          10: 10_minutes
-          15: 15_minutes
-          30: 30_minutes
-          60: 60_minutes
+          0x00: never
+          0x01: 1_minute
+          0x02: 5_minutes
+          0x03: 10_minutes
+          0x04: 15_minutes
+          0x05: 30_minutes
+          0x06: 60_minutes
 
   status_parse:
     station_volume:
@@ -236,4 +237,3 @@ device:
       type: percentage
       perc_min: 0
       perc_max: 100
-

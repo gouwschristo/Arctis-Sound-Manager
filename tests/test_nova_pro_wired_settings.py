@@ -48,5 +48,6 @@ def test_stream_mix_is_main_main_aux_mic():
     assert _frame("line_out_stream_mic_volume", 50) == [0x06, 0x47, 80, 80, 60, 50]
 
 
-def test_the_dim_timer_takes_minutes_not_an_index():
-    assert _frame("station_screen_saver_timeout", 30) == [0x06, 0x83, 30]
+def test_the_dim_timer_sends_ggs_index_not_minutes():
+    """transform_minutes_to_dim_timer: 30 minutes is index 5 on the wire."""
+    assert _frame("station_screen_saver_timeout", 0x05) == [0x06, 0x83, 0x05]

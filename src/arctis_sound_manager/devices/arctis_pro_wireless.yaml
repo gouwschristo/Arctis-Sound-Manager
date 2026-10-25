@@ -109,6 +109,16 @@ device:
         max_label: perc_100
         default: 0x00
         update_sequence: [0x39, 0xaa, 'value']
+      mic_led_brightness:
+        # mute_mic_brightness (0x3E): the muted-mic LED, 0-10 as in GG.
+        type: slider
+        min: 0x00
+        max: 0x0a
+        step: 1
+        min_label: perc_0
+        max_label: perc_100
+        default: 0x0a
+        update_sequence: [0x3e, 0xaa, 'value']
     power_management:
       # Value sent in 10-minute increments (minutes / 10).
       pm_shutdown:
@@ -134,6 +144,61 @@ device:
         max_label: perc_100
         default: 0x0a
         update_sequence: [0x85, 0xaa, 'value']
+      # The four below are what GG's page for this base station offers next
+      # to the brightness (GG 122), frames [command, 0xAA, value] from the
+      # spec (arctis-pro-wireless.device). Not yet tried on a real one.
+      station_screensaver:
+        # screensaver_mode (0x89): GG's dim / screen off / screensaver.
+        type: button_group
+        default: 0x00
+        update_sequence: [0x89, 0xaa, 'value']
+        values_mapping:
+          0x00: dimm
+          0x01: screen_off
+          0x02: screensaver
+      station_screen_saver_timeout:
+        # display_timeout (0x60): tens of seconds, 3-60 (30 s to 10 min),
+        # every value GG lists.
+        type: slider
+        min: 3
+        max: 60
+        step: 3
+        min_label: 30_seconds
+        max_label: 10_minutes
+        default: 30
+        update_sequence: [0x60, 0xaa, 'value']
+    headset:
+      volume_limiter:
+        # volume_limiter (0x27): GG's toggle, 1 limited / 0 unlimited.
+        type: toggle
+        values:
+          off: 0x00
+          on: 0x01
+          off_label: unlimited
+          on_label: limited
+        default: 0x00
+        update_sequence: [0x27, 0xaa, 'value']
+    bluetooth:
+      bluetooth_power_status:
+        # bt_startup_mode (0x62): Bluetooth on when the base powers up.
+        type: toggle
+        values:
+          off: 0x00
+          on: 0x01
+          off_label: off
+          on_label: on
+        default: 0x00
+        update_sequence: [0x62, 0xaa, 'value']
+      bluetooth_auto_mute:
+        # bt_gamemute_pref (0x63): mute game audio during a Bluetooth call.
+        type: toggle
+        values:
+          off: 0x00
+          on: 0x01
+          off_label: off
+          on_label: on
+        default: 0x00
+        update_sequence: [0x63, 0xaa, 'value']
 
   # The screen is drawn by the included siberia-840 spec, not this file:
   # 0xD0/0xD1 take it, 0xD2 sends a whole 128x48 frame in one 1025-byte

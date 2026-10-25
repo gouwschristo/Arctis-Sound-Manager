@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Arctis Pro Wireless: the settings GG offers for it.** Volume limiter, the muted microphone's LED, the screensaver and its delay, Bluetooth at power-up and game mute during a Bluetooth call, each with GG's own values. Not yet tried on a real one: if you own one, please tell us on #331 whether each control works.
 - **Arctis Pro GameDAC: the settings GG offers for it.** DAC gain, line out (speakers or streaming) with its four stream mix levels (game, chat, aux, mic), and the screen brightness, each with GG's own values. Not yet tried on a real GameDAC: if you own one, please tell us on #331 whether each control does what it says.
 
 ### Changed

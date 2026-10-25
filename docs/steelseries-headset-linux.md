@@ -35,7 +35,8 @@ something provides it.
   inactivity timeout, microphone volume, battery (and the spare battery in the
   base, or the GameBuds charging case), the Nova Elite and Pro Omni's
   microphone and Bluetooth EQ presets, the Arctis Pro GameDAC's gain, line
-  out and stream mix, spoken over the headset's own USB protocol. On the Elite and Omni, ASM reads the base's settings at start
+  out and stream mix, the Arctis Pro Wireless' volume limiter and screen
+  settings, spoken over the headset's own USB protocol. On the Elite and Omni, ASM reads the base's settings at start
   and leaves alone the ones you never changed in ASM.
 - **The base station's OLED screen** — the EQ of what is playing, the
   now-playing track, and screen-off while you are away.

@@ -50,14 +50,14 @@ def test_a_mic_preset_frame_matches_what_the_base_reads_back():
     assert frame[2:] == reply[1:79]
 
 
-def test_a_bluetooth_preset_frame_matches_the_header_the_base_reads_back():
-    """Elite, Bluetooth on Bass Boost: slot 1, BASS, Bass Boost. The gains it
-    reads back are the firmware's own curve, not GG's, so only the header is
-    compared."""
+def test_a_bluetooth_preset_frame_matches_what_the_base_reads_back():
+    """Elite, Bluetooth on Bass Boost: slot 1, BASS, Bass Boost and its ten
+    gains. GG's database has a wrong Bass Boost (a copy of Smiley); this
+    reply is what settled which curve is the real one."""
     reply = _probe("elite")["read_bluetooth_eq_settings"]
     frame = encode_ten_band_eq(0x1F, _preset(BLUETOOTH_PRESETS, "Bass Boost"))
 
-    assert frame[2:70] == reply[1:69]
+    assert frame[2:] == reply[1:79]
 
 
 def test_gains_are_signed_tenths_of_a_db():

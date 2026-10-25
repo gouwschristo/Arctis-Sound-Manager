@@ -235,8 +235,10 @@ def encode_elite_parametric_eq(bands: list[EqBand], name: str = "Custom",
 # The presets are GG's own (engine database, device_game_eq_presets, GG 95):
 # what its UI lists for supported mode MICROPHONE (32) and BLUETOOTH (16), and
 # whose gains it sends with the slot. Only the gains go on the wire; GG's
-# frequencies are fixed by the firmware. GG's Smiley carries the same gains as
-# its Bass Boost; copied as is.
+# frequencies are fixed by the firmware. One exception: the database's Bass
+# Boost row is a copy of Smiley's. GG's UI hardcodes the real curve (its Nova
+# Pro module), and an Elite base reads that one back for its Bass Boost slot
+# (#331 probe), so it is the one used here.
 
 TEN_BAND_GAIN_MIN_DB = -12.0
 TEN_BAND_GAIN_MAX_DB = 12.0
@@ -269,7 +271,7 @@ MIC_PRESETS = (
 #: The slots ten_band_eq_bt maps names to (spec api ten_band_eq_bt).
 BLUETOOTH_PRESETS = (
     OnboardPreset(0, "Flat", "FLAT", (0.0,) * 10),
-    OnboardPreset(1, "Bass Boost", "BASS", (3.0, 3.5, 1.5, -1.5, -4.0, -4.0, -2.5, 1.5, 3.0, 4.0)),
+    OnboardPreset(1, "Bass Boost", "BASS", (3.5, 5.5, 4.0, 1.0, -1.5, -1.5, -1.0, -1.0, -1.0, -1.0)),
     OnboardPreset(2, "Focus", "FOCUS", (-5.0, -3.5, -1.0, -3.5, -2.5, 4.0, 6.0, 3.5, -3.5, 0.0)),
     OnboardPreset(3, "Smiley", "SMILEY", (3.0, 3.5, 1.5, -1.5, -4.0, -4.0, -2.5, 1.5, 3.0, 4.0)),
 )

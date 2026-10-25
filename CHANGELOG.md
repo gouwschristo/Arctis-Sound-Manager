@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Arctis Pro GameDAC: the settings GG offers for it.** DAC gain, line out (speakers or streaming) with its four stream mix levels (game, chat, aux, mic), and the screen brightness, each with GG's own values. Not yet tried on a real GameDAC: if you own one, please tell us on #331 whether each control does what it says.
+
 ### Changed
+- **Arctis Pro GameDAC: sidetone has GG's four levels** (off, low, medium, high) instead of a 0-10 slider whose upper levels the DAC has no use for.
 - **Nova Elite and Nova Pro Omni: ASM reads the base station's settings before changing any** (#331). Every start used to push ASM's defaults over what the base already had: sidetone, microphone volume, noise cancelling, auto-off, line out and stream mix, screen saver and home screen, Bluetooth preferences. A setting you never changed in ASM now keeps the value the base holds, set in GG on a dual-boot or on the base itself. Thanks @FrDrebin and @PointyKite, whose probes gave the layout.
 
 ### Fixed

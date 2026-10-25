@@ -139,14 +139,97 @@ device:
       fields: {left_preset: 1, right_preset: 2, mic_preset: 3, mute_preset: 4}
 
   settings:
+    # Every control below is one GG shows for this product (its GameDAC
+    # page in GG 122), with GG's own values; the commands are the spec's
+    # (arctis-pro-gameDac.device). Not yet tried on a real GameDAC.
     microphone:
-      # side_tone, command 0x39 in the spec, one byte of level.
       mic_side_tone:
-        type: slider
-        min: 0x00
-        max: 0x0a
-        step: 1
-        min_label: off
-        max_label: perc_100
+        # side_tone (0x39), one byte. GG offers four levels, 0-3
+        # (sideToneValues); the 0-10 slider this used to be wrote levels the
+        # DAC has no use for.
+        type: button_group
         default: 0x00
         update_sequence: [0x39, 'value']
+        values_mapping:
+          0x00: off
+          0x01: low
+          0x02: medium
+          0x03: high
+    headset:
+      gain:
+        # dac_gain (0x27): GG's gainLevels are 2 (high) and 1 (low), the
+        # same frame and values as the Nova Pro's gain.
+        type: toggle
+        values:
+          off: 0x01
+          on: 0x02
+          off_label: low
+          on_label: high
+        default: 0x02
+        update_sequence: [0x27, 'value']
+    station:
+      line_out:
+        # line_out_mode (0x43): 1 speakers, 2 streaming.
+        type: button_group
+        default: 0x01
+        update_sequence: [0x43, 'value']
+        values_mapping:
+          0x01: speaker
+          0x02: stream
+      # stream_mix (0x47) carries all four levels in one frame, 0-20 each
+      # (GG's levels: min 0, max 20, step 1), so each slider sends the
+      # other three as they stand.
+      line_out_stream_game_volume:
+        type: slider
+        min: 0
+        max: 20
+        step: 1
+        min_label: perc_0
+        max_label: perc_100
+        default: 20
+        visible_when:
+          line_out: 2
+        update_sequence: [0x47, 'value', 'settings.line_out_stream_chat_volume', 'settings.line_out_stream_aux_volume', 'settings.line_out_stream_mic_volume']
+      line_out_stream_chat_volume:
+        type: slider
+        min: 0
+        max: 20
+        step: 1
+        min_label: perc_0
+        max_label: perc_100
+        default: 20
+        visible_when:
+          line_out: 2
+        update_sequence: [0x47, 'settings.line_out_stream_game_volume', 'value', 'settings.line_out_stream_aux_volume', 'settings.line_out_stream_mic_volume']
+      line_out_stream_aux_volume:
+        type: slider
+        min: 0
+        max: 20
+        step: 1
+        min_label: perc_0
+        max_label: perc_100
+        default: 20
+        visible_when:
+          line_out: 2
+        update_sequence: [0x47, 'settings.line_out_stream_game_volume', 'settings.line_out_stream_chat_volume', 'value', 'settings.line_out_stream_mic_volume']
+      line_out_stream_mic_volume:
+        type: slider
+        min: 0
+        max: 20
+        step: 1
+        min_label: perc_0
+        max_label: perc_100
+        default: 20
+        visible_when:
+          line_out: 2
+        update_sequence: [0x47, 'settings.line_out_stream_game_volume', 'settings.line_out_stream_chat_volume', 'settings.line_out_stream_aux_volume', 'value']
+      station_screen_brightness:
+        # screen_brightness (0x85): GG's ten steps, 24 to 240.
+        type: slider
+        min: 24
+        max: 240
+        step: 24
+        min_label: perc_10
+        max_label: perc_100
+        default: 240
+        update_sequence: [0x85, 'value']

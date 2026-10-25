@@ -68,6 +68,17 @@ device:
 
   settings:
     microphone:
+      mic_volume:
+        # mic_volume (0x33): [0x06, 0x33, 0x00, amplitude 0-100], in
+        # arctis-1w-tx, which the 1X and 7X include, and in arctis-7p-tx. Not yet tried on hardware.
+        type: slider
+        min: 0
+        max: 100
+        step: 5
+        min_label: perc_0
+        max_label: perc_100
+        default: 100
+        update_sequence: [0x06, 0x33, 0x00, 'value']
       mic_side_tone:
         type: slider
         min: 0x00

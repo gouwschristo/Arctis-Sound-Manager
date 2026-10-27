@@ -56,6 +56,11 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="1.6.5" date="2026-10-27">
+      <description>
+        <p>Arctis GameBuds: choose the audio source, the 2.4 GHz dongle or Bluetooth, the switch GG makes when its EQ panel changes tab. On Bluetooth, this computer's audio through the dongle no longer reaches the earbuds. Not yet tried on real GameBuds. Arctis 7 / 7 2019 and Arctis 1 Wireless / 1X / 7X / 7P: microphone volume, as GG offers it (0-100). Not yet tried on hardware: if you own one, please tell us on #331 whether it works. Arctis Nova Pro Wired: line out, stream mix and screen dimming. Line out to speakers or streaming, the main / aux / mic stream mix, and when the GameDAC's screen dims, as GG offers them. Not yet tried on a real one: if you own one, please tell us on #331 whether each control works.</p>
+      </description>
+    </release>
     <release version="1.6.4" date="2026-10-23">
       <description>
         <p>Nix: the package builds again on recent nixpkgs (#344). nixpkgs switched Python packages to structured attributes in October, which passed each grouped wrapper option as a single argument that makeWrapper rejected. Each argument now stands on its own. Contributed by @jgopel. Apps go back to their channel when the dongle or headset comes back (#343). When the channels disappear (dongle unplugged, headset off), every app falls back to another output, and on reconnect only the apps you had pinned to a channel came back; a game left on Game stayed on the monitor speakers. ASM now remembers which channel each app was on and puts it back, without touching an app you have since moved to another ASM channel. Thanks @Fabi0699. Nova Pro Omni: the base station's own screen flashed over ASM's custom display (#330). ASM drew all 64 rows, over the 12-row status strip at the top that the base keeps for itself; each time its charging indicator changed, the Omni redrew its whole screen for up to a second. ASM now draws 128x52 below that strip, as GG does on this family (the Nova Elite too). Thanks @FrDrebin for tracking it down to the charging battery.</p>
@@ -199,11 +204,6 @@
     <release version="1.4.14" date="2026-09-02">
       <description>
         <p>Audible pop/click on track change with Spatial Audio on Media. The. deps-checker false failures in containers. The HOST/CONTAINER scope. 3 new Sonar presets from SteelSeries GG 118.0.0.</p>
-      </description>
-    </release>
-    <release version="1.4.13" date="2026-08-30">
-      <description>
-        <p>A headset that powers off and on gets its settings back. Sidetone, mic. **The Arctis 7 ChatMix dial no longer freezes at the position it had when the. The Arctis 7 2019 ChatMix dial reported the wrong volume.</p>
       </description>
     </release>
   </releases>

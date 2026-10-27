@@ -3520,7 +3520,10 @@ class CoreEngine:
             # described band by band and sent over three frames, the last of
             # which commits it. ASM's sliders are 0-40 with 20 = 0 dB, half a
             # decibel per step, which is the -10..+10 dB the hardware takes.
-            from arctis_sound_manager.hardware_eq import BAND_LAYOUTS, ENCODERS
+            from arctis_sound_manager.hardware_eq import (BAND_LAYOUTS,
+                                                          CONNECTION_BLUETOOTH,
+                                                          CONNECTION_WIRELESS,
+                                                          ENCODERS)
 
             encoder = ENCODERS.get(eq_format)
             if encoder is None:
@@ -3528,7 +3531,15 @@ class CoreEngine:
                                   eq_format, self.device_config.name)
                 return False
             options = dict(self.device_config.hardware_eq_options)
-            if connection != 0x00:
+            if (eq_format == 'parametric'
+                    and self.device_config.hardware_eq_gain_encoding != 'decibel_signed'):
+                # encode_parametric_eq defaults to signed decidecibels; a family
+                # that stores the biased byte must say so, or every band lands
+                # at the wrong gain (the Nova 5 would store 0x00 for 0 dB,
+                # which it reads as -10 dB). Only that encoder takes the
+                # argument — elite_parametric has its own frame layout.
+                options['gain_encoding'] = self.device_config.hardware_eq_gain_encoding
+            if connection == CONNECTION_BLUETOOTH:
                 bt_band_command = self.device_config.hardware_eq_bt_band_command
                 if bt_band_command is None:
                     self.logger.info(
@@ -3538,6 +3549,13 @@ class CoreEngine:
                     return False
                 options['band_command'] = bt_band_command
                 options['connection'] = connection
+            elif connection != CONNECTION_WIRELESS:
+                # connection_type 0x02 (microphone EQ) exists in the specs but
+                # no family ASM drives has a band frame for it.
+                self.logger.info(
+                    "%s has no EQ command for connection 0x%02x — not sending.",
+                    self.device_config.name, connection)
+                return False
             # Some families need the device to breathe between the name frame
             # and the bands: GG raises its inter-command delay to 600 ms there
             # (and its USB timeout to 1200 ms) for the Nova 5 and the GameBuds.
@@ -4833,7 +4851,8 @@ class CoreEngine:
         if not self.has_hardware_eq_readback():
             return {'ok': False, 'error': 'unsupported'}
 
-        from arctis_sound_manager.hardware_eq import (decode_eq_preset_data,
+        from arctis_sound_manager.hardware_eq import (CONNECTION_BLUETOOTH,
+                                                       decode_eq_preset_data,
                                                        decode_eq_preset_name)
 
         readback = self.device_config.hardware_eq_readback
@@ -4844,7 +4863,7 @@ class CoreEngine:
         # Some families answer with a different frame per connection: the
         # Nova 5's 0x20 carries the 2.4 GHz curve and 0x22 the Bluetooth one.
         band_query = readback.band_query
-        if conn != 0x00 and readback.bt_band_query is not None:
+        if conn == CONNECTION_BLUETOOTH and readback.bt_band_query is not None:
             band_query = readback.bt_band_query
 
         result: dict = {'ok': True, 'connection_type': conn}
@@ -4873,7 +4892,7 @@ class CoreEngine:
                     for b in decode_eq_preset_data(
                         band_response,
                         band_start=readback.band_start,
-                        gain_encoding=readback.gain_encoding)
+                        gain_encoding=self.device_config.hardware_eq_gain_encoding)
                 ]
             except ValueError as e:
                 result['bands'] = None

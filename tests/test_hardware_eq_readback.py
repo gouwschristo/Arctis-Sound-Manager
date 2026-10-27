@@ -281,8 +281,9 @@ def test_nova5_profile_declares_its_readback():
     assert readback.band_query == 0x20
     assert readback.name_query == 0xA6
     assert readback.band_start == 1
-    assert readback.gain_encoding == GAIN_OFFSET_BINARY
     assert readback.connection_type == 0x00
+    # The gain byte's encoding is the family's, shared with the write path.
+    assert config.hardware_eq_gain_encoding == GAIN_OFFSET_BINARY
 
 
 # ── Profile gating: config.py parsing of hardware_eq.readback ──────────────
@@ -296,7 +297,7 @@ def _config(name: str) -> DeviceConfiguration:
     ("nova_7p_perc_battery.yaml", 0x32, 2, "decibel_signed"),
     ("nova_7_perc_battery.yaml", 0x32, 2, "decibel_signed"),
     # The Nova 5 has no 0x32: the curve rides along with 0x20, one byte earlier
-    # and in the biased write-side gain form.
+    # and in the biased gain form.
     ("nova_5.yaml", 0x20, 1, GAIN_OFFSET_BINARY),
 ])
 def test_families_with_a_confirmed_spec_declare_readback(profile, band_query, band_start,
@@ -307,7 +308,7 @@ def test_families_with_a_confirmed_spec_declare_readback(profile, band_query, ba
     assert readback.band_query == band_query
     assert readback.name_query == 0xA6
     assert readback.band_start == band_start
-    assert readback.gain_encoding == gain_encoding
+    assert config.hardware_eq_gain_encoding == gain_encoding
     assert readback.connection_type == 0x00  # wireless, same slot the sliders write to
 
 

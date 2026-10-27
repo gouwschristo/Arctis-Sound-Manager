@@ -99,6 +99,58 @@ def test_bluetooth_write_is_refused_when_the_family_has_no_bt_command():
     engine.send_command.assert_not_called()
 
 
+def test_bt_band_command_is_not_forwarded_to_the_encoder():
+    """`bt_band_command` ends in `_command`, and every such key is passed to the
+    encoder as a keyword argument — leaving it in raised TypeError on every
+    parametric write, so the guarantee is pinned here rather than implied."""
+    config = _config("nova_5.yaml")
+
+    assert config.hardware_eq_bt_band_command == 0x34
+    assert 'bt_band_command' not in config.hardware_eq_options
+    # The keys the encoder does take are still there.
+    assert config.hardware_eq_options['band_command'] == 0x33
+    assert config.hardware_eq_options['name_command'] == 0xA5
+
+
+def test_write_for_an_unknown_connection_is_refused():
+    engine = _engine(_config("nova_5.yaml"))
+
+    assert CoreEngine.send_eq_command(engine, [20] * 10, 0x02) is False
+    engine.send_command.assert_not_called()
+
+
+def test_nova5_curve_carries_the_biased_gain_bytes():
+    """0 dB must reach the headset as 0x14, not 0x00: written as 0x00 the
+    device reports (and applies) -10 dB, which was the state of this write
+    path until the read-back above was pointed at it."""
+    config = _config("nova_5.yaml")
+    engine = _engine(config)
+
+    assert CoreEngine.send_eq_command(engine, [20] * 10) is True
+    band_frame = [c.args[0] for c in engine.send_command.call_args_list][1]
+    start = len(band_frame) - 60          # opcode + optional connection byte
+    assert [band_frame[start + i * 6 + 3] for i in range(10)] == [0x14] * 10
+
+    # +6 dB on every band -> 0x20 (20 + 6*2)
+    assert CoreEngine.send_eq_command(engine, [32] * 10) is True
+    band_frame = [c.args[0] for c in engine.send_command.call_args_list][3]
+    start = len(band_frame) - 60
+    assert [band_frame[start + i * 6 + 3] for i in range(10)] == [0x20] * 10
+
+
+@pytest.mark.parametrize("profile", ["nova_7p_perc_battery.yaml", "nova_7_perc_battery.yaml"])
+def test_families_without_a_gain_encoding_keep_signed_bytes(profile):
+    """The Nova 7 family's spec really does use signed decidecibels; this
+    change must leave its frames untouched."""
+    config = _config(profile)
+    engine = _engine(config)
+
+    assert CoreEngine.send_eq_command(engine, [20] * 10) is True
+    band_frame = [c.args[0] for c in engine.send_command.call_args_list][1]
+    start = len(band_frame) - 60
+    assert [band_frame[start + i * 6 + 3] for i in range(10)] == [0x00] * 10
+
+
 # Profiles whose curve goes out as one HIDFEATURE chunk instead of command
 # frames. profile → (opcode at frame[1], chunk size)
 FEATURE_REPORT_PROFILES = {

@@ -4848,7 +4848,10 @@ class CoreEngine:
                 result['bands'] = [
                     {'frequency': b.frequency, 'gain_db': b.gain_db,
                      'q': b.q, 'filter_type': b.filter_type}
-                    for b in decode_eq_preset_data(band_response)
+                    for b in decode_eq_preset_data(
+                        band_response,
+                        band_start=readback.band_start,
+                        gain_encoding=readback.gain_encoding)
                 ]
             except ValueError as e:
                 result['bands'] = None

@@ -115,10 +115,17 @@ class HardwareEqReadback:
     a profile by analogy with a sibling family.
     """
 
-    def __init__(self, band_query: int, name_query: int, connection_type: int = 0x00):
+    def __init__(self, band_query: int, name_query: int, connection_type: int = 0x00,
+                 band_start: int = 2, gain_encoding: str = 'decibel_signed'):
         self.band_query = int(band_query)
         self.name_query = int(name_query)
         self.connection_type = int(connection_type)
+        # Where band 1 sits in the reply and how its gain byte is written.
+        # Both are family-specific: 0x32 echoes connection_type (band 1 at 2)
+        # and uses signed decidecibels, while the Nova 5 reads the curve out of
+        # 0x20 (band 1 at 1, biased gain byte). Defaults are the 0x32 family.
+        self.band_start = int(band_start)
+        self.gain_encoding = str(gain_encoding)
 
 
 class ConfigStatusResponseMapping:

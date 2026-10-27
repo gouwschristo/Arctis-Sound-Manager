@@ -101,6 +101,18 @@ device:
     # GG raises its inter-command delay to 600 ms between the name and the
     # bands for this family, and its USB timeout with it.
     frame_delay_ms: 600
+    # Read-back, confirmed on a 1038:2232. There is no 0x32 on this family:
+    # the audio settings read (0x20) returns the stored curve in the same
+    # reply as mic volume, sidetone and the limiter. Two differences from the
+    # Nova 7 Gen 2's 0x32 reply make the defaults wrong here — 0x20 echoes no
+    # connection_type (so band 1 starts at offset 1, not 2) and its gain byte
+    # is the biased write-side form (20 = 0 dB, half a dB per step) rather
+    # than signed decidecibels. 0x22 is the same frame for the BT curve.
+    readback:
+      band_query: 0x20
+      name_query: 0xa6
+      band_start: 1
+      gain_encoding: offset_binary
 
   online_status:
     status_variable: headset_power_status

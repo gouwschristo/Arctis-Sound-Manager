@@ -331,23 +331,46 @@ ENCODERS = {
 # This is the failure mode the raw hex in read_hardware_eq() exists for: at
 # offset 1 the reply still decoded into ten plausible-looking bands.
 
-def decode_band(data: bytes) -> EqBand:
+#: How the gain byte of an *incoming* band is encoded. The reply encoding is
+#: not the same across families, and the difference is silent: an offset-binary
+#: reply read as signed decidecibels still yields plausible-looking gains.
+#:
+#: * ``decibel_signed`` — signed decidecibels, 0 dB = 0x00, +12 dB = 0x78
+#:   (0x32 on the Nova 7 Gen 2 family).
+#: * ``offset_binary`` — the same biased byte the write path sends, 0 dB = 20,
+#:   half a decibel per step (0x20 / 0x22 on the Nova 5).
+GAIN_DECIBEL_SIGNED = 'decibel_signed'
+GAIN_OFFSET_BINARY = 'offset_binary'
+GAIN_ENCODINGS = (GAIN_DECIBEL_SIGNED, GAIN_OFFSET_BINARY)
+
+#: Bias of the ``offset_binary`` gain byte: 20 == 0 dB.
+_OFFSET_BINARY_ZERO = 20
+
+
+def decode_band(data: bytes, gain_encoding: str = GAIN_DECIBEL_SIGNED) -> EqBand:
     """Six bytes → EqBand, the inverse of :func:`encode_band`.
 
     The *incoming* eqBand struct uses narrower types than the outgoing one:
-    gain is a plain signed byte (not the float32 encode_band's caller
-    produces) and Q is a 16-bit unsigned value of thousandths (not float32).
-    Decoding with the outgoing widths would misread every band.
+    gain is a single byte (not the float32 encode_band's caller produces) and
+    Q is a 16-bit unsigned value of thousandths (not float32). Decoding with
+    the outgoing widths would misread every band.
+
+    ``gain_encoding`` picks how that gain byte is read; see GAIN_ENCODINGS.
     """
     if len(data) < 6:
         raise ValueError(f"eq band frame too short: {len(data)} bytes (need 6)")
+    if gain_encoding not in GAIN_ENCODINGS:
+        raise ValueError(f"unknown gain encoding {gain_encoding!r}")
     frequency = int.from_bytes(data[0:2], "little")
     filter_type = data[2]
-    gain_raw = int.from_bytes(data[3:4], "little", signed=True)
+    if gain_encoding == GAIN_OFFSET_BINARY:
+        gain_db = (data[3] - _OFFSET_BINARY_ZERO) / 2
+    else:
+        gain_db = int.from_bytes(data[3:4], "little", signed=True) / 10
     q_raw = int.from_bytes(data[4:6], "little")
     return EqBand(
         frequency=frequency,
-        gain_db=gain_raw / 10,
+        gain_db=gain_db,
         q=q_raw / 1000,
         filter_type=filter_type,
     )
@@ -363,23 +386,32 @@ _EQ_BAND_SIZE = 6
 _EQ_BAND_COUNT = 10
 
 
-def decode_eq_preset_data(response: list[int]) -> list[EqBand]:
-    """Decode a `get_eq_preset_data` (0x32) reply into its ten EqBand.
+def decode_eq_preset_data(response: list[int],
+                          band_start: int = _EQ_BAND_START,
+                          gain_encoding: str = GAIN_DECIBEL_SIGNED) -> list[EqBand]:
+    """Decode an EQ read-back reply into its ten EqBand.
+
+    The default layout is `get_eq_preset_data` (0x32) on the Nova 7 Gen 2
+    family: opcode echo at 0, connection_type echo at 1, band 1 at 2. Families
+    whose read-back is a different frame pass their own ``band_start`` and
+    ``gain_encoding`` — the Nova 5 reads the curve out of its audio settings
+    reply (0x20), which carries no connection_type echo (bands start at 1) and
+    uses the biased write-side gain byte.
 
     Raises ValueError if the reply is shorter than expected — deliberately,
     rather than returning bands built from padding. See the module-level note
     above for the offset this assumes and why.
     """
-    needed = _EQ_BAND_START + _EQ_BAND_SIZE * _EQ_BAND_COUNT
+    needed = band_start + _EQ_BAND_SIZE * _EQ_BAND_COUNT
     if len(response) < needed:
         raise ValueError(
-            f"get_eq_preset_data reply too short: got {len(response)} bytes, "
+            f"EQ read-back reply too short: got {len(response)} bytes, "
             f"need {needed}."
         )
     data = bytes(b & 0xFF for b in response)
     return [
-        decode_band(data[_EQ_BAND_START + i * _EQ_BAND_SIZE:
-                          _EQ_BAND_START + (i + 1) * _EQ_BAND_SIZE])
+        decode_band(data[band_start + i * _EQ_BAND_SIZE:
+                         band_start + (i + 1) * _EQ_BAND_SIZE], gain_encoding)
         for i in range(_EQ_BAND_COUNT)
     ]
 

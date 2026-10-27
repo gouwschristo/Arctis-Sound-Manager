@@ -31,7 +31,8 @@ from ruamel.yaml import YAML
 
 from arctis_sound_manager.config import DeviceConfiguration
 from arctis_sound_manager.core import CoreEngine
-from arctis_sound_manager.hardware_eq import (decode_band,
+from arctis_sound_manager.hardware_eq import (GAIN_OFFSET_BINARY,
+                                               decode_band,
                                                decode_eq_preset_data,
                                                decode_eq_preset_name)
 
@@ -204,25 +205,116 @@ def test_decode_eq_preset_name_too_short_raises():
         decode_eq_preset_name([0xA6, 0x00, 0x01])
 
 
+
+# ── Arctis Nova 5: the curve comes back in the 0x20 audio settings reply ───
+#
+# Captured from a real 1038:2232. There is no get_eq_preset_data (0x32) on
+# this family, and the audio settings reply does not echo connection_type, so
+# band 1 starts at offset 1 rather than 2. Its gain byte is the biased form
+# the write path sends — 20 = 0 dB, half a decibel per step — not the signed
+# decidecibels the Nova 7 Gen 2's 0x32 reply uses.
+_NOVA5_0X20_REPLY = [
+    0x20,
+    0x20, 0x00, 0x04, 0x0a, 0x86, 0x05,   #    32 Hz  LowShelf  -5.0 dB  Q 1.414
+    0x40, 0x00, 0x01, 0x0d, 0x86, 0x05,   #    64 Hz  Peak      -3.5 dB  Q 1.414
+    0x7d, 0x00, 0x01, 0x12, 0x86, 0x05,   #   125 Hz  Peak      -1.0 dB  Q 1.414
+    0xfa, 0x00, 0x01, 0x0d, 0x86, 0x05,   #   250 Hz  Peak      -3.5 dB  Q 1.414
+    0xf4, 0x01, 0x01, 0x0f, 0x86, 0x05,   #   500 Hz  Peak      -2.5 dB  Q 1.414
+    0xe8, 0x03, 0x01, 0x1c, 0x86, 0x05,   #  1000 Hz  Peak      +4.0 dB  Q 1.414
+    0xd0, 0x07, 0x01, 0x20, 0x86, 0x05,   #  2000 Hz  Peak      +6.0 dB  Q 1.414
+    0xa0, 0x0f, 0x01, 0x0d, 0x86, 0x05,   #  4000 Hz  Peak      -3.5 dB  Q 1.414
+    0x40, 0x1f, 0x01, 0x14, 0x86, 0x05,   #  8000 Hz  Peak       0.0 dB  Q 1.414
+    0x80, 0x3e, 0x01, 0x14, 0x86, 0x05,   # 16000 Hz  Peak       0.0 dB  Q 1.414
+    0x0f, 0x00, 0x01,                     # mic_volume 15, sidetone 0, limiter 1
+]
+
+_NOVA5_BANDS = [
+    (32,    4, -5.0, 1.414),
+    (64,    1, -3.5, 1.414),
+    (125,   1, -1.0, 1.414),
+    (250,   1, -3.5, 1.414),
+    (500,   1, -2.5, 1.414),
+    (1000,  1,  4.0, 1.414),
+    (2000,  1,  6.0, 1.414),
+    (4000,  1, -3.5, 1.414),
+    (8000,  1,  0.0, 1.414),
+    (16000, 1,  0.0, 1.414),
+]
+
+
+def test_nova5_reply_is_a_full_64_byte_report():
+    assert len(_NOVA5_0X20_REPLY) == 64
+    assert _NOVA5_0X20_REPLY[0] == 0x20
+
+
+def test_nova5_reply_decodes_with_its_own_offset_and_gain_encoding():
+    bands = decode_eq_preset_data(_NOVA5_0X20_REPLY, band_start=1,
+                                  gain_encoding=GAIN_OFFSET_BINARY)
+
+    assert [b.frequency for b in bands] == [f for f, _, _, _ in _NOVA5_BANDS]
+    assert [b.filter_type for b in bands] == [t for _, t, _, _ in _NOVA5_BANDS]
+    assert [b.gain_db for b in bands] == pytest.approx([g for _, _, g, _ in _NOVA5_BANDS])
+    assert [b.q for b in bands] == pytest.approx([q for _, _, _, q in _NOVA5_BANDS])
+
+
+def test_nova5_reply_misdecodes_with_the_nova7_defaults():
+    """Why the two options exist: the defaults still produce plausible bands.
+
+    Reading the same reply with the 0x32 defaults shifts every byte two
+    places: band 1 comes out as 1024 Hz / filter type 10 / -12.2 dB instead of
+    32 Hz / LowShelf / -5.0 dB. Nothing raises, and ten bands come back —
+    which is exactly the phase error the 0x32 note in hardware_eq.py warns
+    about.
+    """
+    bands = decode_eq_preset_data(_NOVA5_0X20_REPLY)
+
+    assert len(bands) == 10
+    assert bands[0].frequency == 1024
+    assert bands[0].filter_type == 10
+    assert bands[0].gain_db == pytest.approx(-12.2)
+
+
+def test_nova5_profile_declares_its_readback():
+    config = _config("nova_5.yaml")
+    readback = config.hardware_eq_readback
+    assert readback is not None
+    assert readback.band_query == 0x20
+    assert readback.name_query == 0xA6
+    assert readback.band_start == 1
+    assert readback.gain_encoding == GAIN_OFFSET_BINARY
+    assert readback.connection_type == 0x00
+
+
 # ── Profile gating: config.py parsing of hardware_eq.readback ──────────────
 
 def _config(name: str) -> DeviceConfiguration:
     return DeviceConfiguration(YAML(typ="safe").load(DEVICES / name))
 
 
-@pytest.mark.parametrize("profile", ["nova_7p_perc_battery.yaml", "nova_7_perc_battery.yaml"])
-def test_families_with_a_confirmed_spec_declare_readback(profile):
+@pytest.mark.parametrize("profile, band_query, band_start, gain_encoding", [
+    # get_eq_preset_data echoes connection_type, and its gain is signed decidecibels.
+    ("nova_7p_perc_battery.yaml", 0x32, 2, "decibel_signed"),
+    ("nova_7_perc_battery.yaml", 0x32, 2, "decibel_signed"),
+    # The Nova 5 has no 0x32: the curve rides along with 0x20, one byte earlier
+    # and in the biased write-side gain form.
+    ("nova_5.yaml", 0x20, 1, GAIN_OFFSET_BINARY),
+])
+def test_families_with_a_confirmed_spec_declare_readback(profile, band_query, band_start,
+                                                         gain_encoding):
     config = _config(profile)
     readback = config.hardware_eq_readback
     assert readback is not None
-    assert readback.band_query == 0x32
+    assert readback.band_query == band_query
     assert readback.name_query == 0xA6
+    assert readback.band_start == band_start
+    assert readback.gain_encoding == gain_encoding
     assert readback.connection_type == 0x00  # wireless, same slot the sliders write to
 
 
 @pytest.mark.parametrize("profile", [
     p.name for p in sorted(DEVICES.glob("*.yaml")) if p.name not in (
         "nova_7p_perc_battery.yaml", "nova_7_perc_battery.yaml",
+        "nova_5.yaml",
         # Owned by a parallel change in progress — not touched here.
         "nova_3_wireless.yaml",
     )
@@ -252,8 +344,8 @@ def test_has_hardware_eq_readback_true_for_declared_family():
 
 
 def test_has_hardware_eq_readback_false_without_a_declared_readback():
-    """Nova 5 is parametric too, but its readback opcodes were never checked."""
-    engine = _engine(_config("nova_5.yaml"))
+    """The GameBuds are parametric too, but their readback was never checked."""
+    engine = _engine(_config("gamebuds.yaml"))
     assert engine.has_hardware_eq_readback() is False
 
 
@@ -270,7 +362,7 @@ def test_has_hardware_eq_readback_false_with_no_device():
 
 def test_read_hardware_eq_refused_cleanly_on_family_without_hardware_eq():
     """The command must be rejected, not guessed, for headsets without it."""
-    engine = _engine(_config("nova_5.yaml"))
+    engine = _engine(_config("arctis_7.yaml"))
     engine.send_command = MagicMock()
 
     result = asyncio.run(CoreEngine.read_hardware_eq(engine))
@@ -331,6 +423,34 @@ def test_read_hardware_eq_decodes_a_full_reply():
     }
     assert result["name"] == "Custom"
     assert result["preset_type"] == 1
+
+
+def test_read_hardware_eq_uses_the_nova5_layout_end_to_end():
+    """The profile's band_start/gain_encoding must reach the decoder, not just
+    the config object — the default layout decodes the same reply into a
+    different curve without raising."""
+    engine = _engine(_config("nova_5.yaml"))
+    engine.send_command = MagicMock()
+    responses = {0x20: _NOVA5_0X20_REPLY, 0xA6: _name_response("Flat", 0)}
+
+    async def fake_await(opcode, timeout=2.0):
+        return responses.get(opcode)
+    engine._await_raw_response = fake_await
+
+    result = asyncio.run(CoreEngine.read_hardware_eq(engine))
+
+    engine.send_command.assert_any_call([0x20, 0x00], 0)
+    engine.send_command.assert_any_call([0xA6, 0x00], 0)
+    assert result["ok"] is True
+    assert result["bands"] is not None
+    first = result["bands"][0]
+    assert first["frequency"] == 32
+    assert first["filter_type"] == 4
+    assert first["gain_db"] == pytest.approx(-5.0)
+    assert first["q"] == pytest.approx(1.414)
+    # The name says Flat while the device holds a real curve — the reason the
+    # curve is read from the bands and never inferred from the label.
+    assert result["name"] == "Flat"
 
 
 def test_read_hardware_eq_reports_no_reply_as_timeout_not_a_crash():

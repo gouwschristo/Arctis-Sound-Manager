@@ -3488,8 +3488,14 @@ class CoreEngine:
             self.logger.warning(f"Failed to apply stored EQ: {e}")
         return False
 
-    def send_eq_command(self, bands: list[int]) -> bool:
+    def send_eq_command(self, bands: list[int], connection: int = 0x00) -> bool:
         """Push the 10-band EQ to the headset. Returns False if it has none.
+
+        ``connection`` selects the stored curve: 0x00 is the 2.4 GHz slot the
+        sliders write to, 0x01 the Bluetooth one. Families with a separate
+        Bluetooth band frame (the Nova 5's 0x34) declare
+        ``hardware_eq.bt_band_command``; without it the request is refused
+        rather than aimed at the 2.4 GHz slot.
 
         The command bytes come from the device profile: they used to be
         hardcoded to [0x06, 0x33] — the Nova Pro Wireless' report id and
@@ -3522,6 +3528,16 @@ class CoreEngine:
                                   eq_format, self.device_config.name)
                 return False
             options = dict(self.device_config.hardware_eq_options)
+            if connection != 0x00:
+                bt_band_command = self.device_config.hardware_eq_bt_band_command
+                if bt_band_command is None:
+                    self.logger.info(
+                        "%s has no separate Bluetooth EQ command — refusing to "
+                        "write connection 0x%02x into the 2.4 GHz slot.",
+                        self.device_config.name, connection)
+                    return False
+                options['band_command'] = bt_band_command
+                options['connection'] = connection
             # Some families need the device to breathe between the name frame
             # and the bands: GG raises its inter-command delay to 600 ms there
             # (and its USB timeout to 1200 ms) for the Nova 5 and the GameBuds.
@@ -4825,13 +4841,19 @@ class CoreEngine:
         conn = readback.connection_type if connection_type is None else connection_type
         endpoint = self.get_command_endpoint_address()
 
+        # Some families answer with a different frame per connection: the
+        # Nova 5's 0x20 carries the 2.4 GHz curve and 0x22 the Bluetooth one.
+        band_query = readback.band_query
+        if conn != 0x00 and readback.bt_band_query is not None:
+            band_query = readback.bt_band_query
+
         result: dict = {'ok': True, 'connection_type': conn}
 
         try:
-            self.send_command([readback.band_query, conn], endpoint)
+            self.send_command([band_query, conn], endpoint)
         except usb.core.USBError as e:
             return {'ok': False, 'error': f'usb_write_error: {e!r}'}
-        band_response = await self._await_raw_response(readback.band_query)
+        band_response = await self._await_raw_response(band_query)
         if band_response is None:
             result['bands'] = None
             result['bands_error'] = 'timeout'

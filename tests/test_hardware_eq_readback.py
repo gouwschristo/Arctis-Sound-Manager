@@ -453,6 +453,97 @@ def test_read_hardware_eq_uses_the_nova5_layout_end_to_end():
     assert result["name"] == "Flat"
 
 
+# ── The Bluetooth slot (Nova 5: 0x22 read, 0x34 write, connection 0x01) ────
+
+# Captured from the same 1038:2232: the Bluetooth slot holds a flat curve —
+# every band Peak, gain byte 0x14 (0.0 dB), Q 1.410 — while the 2.4 GHz slot
+# holds the custom curve above. Same offset-1 layout, same biased gain.
+_NOVA5_0X22_REPLY = [
+    0x22,
+    0x20, 0x00, 0x01, 0x14, 0x82, 0x05,
+    0x40, 0x00, 0x01, 0x14, 0x82, 0x05,
+    0x7d, 0x00, 0x01, 0x14, 0x82, 0x05,
+    0xfa, 0x00, 0x01, 0x14, 0x82, 0x05,
+    0xf4, 0x01, 0x01, 0x14, 0x82, 0x05,
+    0xe8, 0x03, 0x01, 0x14, 0x82, 0x05,
+    0xd0, 0x07, 0x01, 0x14, 0x82, 0x05,
+    0xa0, 0x0f, 0x01, 0x14, 0x82, 0x05,
+    0x40, 0x1f, 0x01, 0x14, 0x82, 0x05,
+    0x80, 0x3e, 0x01, 0x14, 0x82, 0x05,
+    0x0f, 0x00, 0x01,
+]
+
+
+def test_nova5_bluetooth_reply_decodes_to_the_flat_slot():
+    bands = decode_eq_preset_data(_NOVA5_0X22_REPLY, band_start=1,
+                                  gain_encoding=GAIN_OFFSET_BINARY)
+
+    assert tuple(b.frequency for b in bands) == _FACTORY_FLAT_FREQUENCIES
+    assert all(b.gain_db == 0.0 for b in bands)
+    assert all(b.filter_type == 1 for b in bands)
+    assert all(b.q == pytest.approx(1.410) for b in bands)
+
+
+def test_nova5_profile_declares_the_bluetooth_slot():
+    config = _config("nova_5.yaml")
+    assert config.hardware_eq_bt_band_command == 0x34
+    assert config.hardware_eq_readback is not None
+    assert config.hardware_eq_readback.bt_band_query == 0x22
+
+
+def test_read_hardware_eq_queries_the_bluetooth_slot_when_asked():
+    """connection_type 1 must switch the query, or the 2.4 GHz curve comes
+    back labelled as the Bluetooth one."""
+    engine = _engine(_config("nova_5.yaml"))
+    engine.send_command = MagicMock()
+    responses = {0x20: _NOVA5_0X20_REPLY, 0x22: _NOVA5_0X22_REPLY,
+                 0xA6: _name_response("Flat", 0)}
+
+    async def fake_await(opcode, timeout=2.0):
+        return responses.get(opcode)
+    engine._await_raw_response = fake_await
+
+    result = asyncio.run(CoreEngine.read_hardware_eq(engine, connection_type=0x01))
+
+    engine.send_command.assert_any_call([0x22, 0x01], 0)
+    engine.send_command.assert_any_call([0xA6, 0x01], 0)
+    assert result["connection_type"] == 0x01
+    assert all(b["gain_db"] == 0.0 for b in result["bands"])
+
+
+def test_read_hardware_eq_falls_back_to_the_shared_query_without_a_bt_one():
+    """Families with one frame for both connections keep using band_query."""
+    engine = _engine(_config("nova_7p_perc_battery.yaml"))
+    engine.send_command = MagicMock()
+
+    async def fake_await(opcode, timeout=2.0):
+        return {0x32: _KNOWN_0x32_RESPONSE, 0xA6: _name_response("Custom", 1)}.get(opcode)
+    engine._await_raw_response = fake_await
+
+    asyncio.run(CoreEngine.read_hardware_eq(engine, connection_type=0x01))
+
+    engine.send_command.assert_any_call([0x32, 0x01], 0)
+
+
+def test_cli_asks_for_the_bluetooth_member_when_requested(monkeypatch):
+    """A separate D-Bus member keeps an old asm-cli/daemon pair working: a
+    signature clash would fail on the daemon side with nothing readable."""
+    from arctis_sound_manager import cli_tools
+
+    calls: list[str] = []
+
+    def fake_call(member, timeout):
+        calls.append(member)
+        return {'ok': False, 'error': 'stub'}
+
+    monkeypatch.setattr(cli_tools, '_call_json_method', fake_call)
+
+    cli_tools.read_hardware_eq_via_dbus()
+    cli_tools.read_hardware_eq_via_dbus(bluetooth=True)
+
+    assert calls == ['ReadHardwareEq', 'ReadHardwareEqBt']
+
+
 def test_read_hardware_eq_reports_no_reply_as_timeout_not_a_crash():
     """No reply at all must be distinguishable from a reply that decodes wrong."""
     engine = _parametric_engine()

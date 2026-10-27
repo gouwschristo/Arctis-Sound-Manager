@@ -116,8 +116,13 @@ class HardwareEqReadback:
     """
 
     def __init__(self, band_query: int, name_query: int, connection_type: int = 0x00,
-                 band_start: int = 2, gain_encoding: str = 'decibel_signed'):
+                 band_start: int = 2, gain_encoding: str = 'decibel_signed',
+                 bt_band_query: int | None = None):
         self.band_query = int(band_query)
+        # Query for the Bluetooth curve when the family has a separate one
+        # (Nova 5: 0x22, where 0x20 is the 2.4 GHz curve). None means the same
+        # frame answers for both connections.
+        self.bt_band_query = int(bt_band_query) if bt_band_query is not None else None
         self.name_query = int(name_query)
         self.connection_type = int(connection_type)
         # Where band 1 sits in the reply and how its gain byte is written.
@@ -362,6 +367,10 @@ class DeviceConfiguration:
     # the opcodes that encoder needs, and the firmware value meaning 0 dB.
     hardware_eq_format: str | None
     hardware_eq_options: dict[str, int]
+    # Band opcode for the *other* radio mode's slot (Nova 5: 0x33 wireless,
+    # 0x34 Bluetooth). None ⇒ the family has one band frame for both, and a
+    # request for the other connection is refused rather than misdirected.
+    hardware_eq_bt_band_command: int | None
     hardware_eq_zero: int
     # Command selecting which stored preset the headset actually applies, for
     # families where writing the curve does not activate it, and the id of
@@ -516,10 +525,18 @@ class DeviceConfiguration:
         # flat run of gains name an encoder from hardware_eq.py here, plus the
         # opcodes that encoder needs.
         self.hardware_eq_format = hardware_eq.get('format', None)
+        # `bt_band_command` also ends in `_command` but is not an encoder
+        # keyword: it names the *other* connection's band frame, chosen at call
+        # time. Forwarding it would raise TypeError inside the encoder.
+        self.hardware_eq_bt_band_command = (
+            int(hardware_eq['bt_band_command'])
+            if hardware_eq.get('bt_band_command') is not None else None
+        )
         self.hardware_eq_options = {
             key: int(value) for key, value in hardware_eq.items()
             if (key.endswith('_command') or key in ('frame_delay_ms', 'report_id'))
             and value is not None
+            and key != 'bt_band_command'
         }
         # Families whose curve goes out as one HIDFEATURE chunk instead of
         # 64-byte command frames (the Nova Elite: 1036 bytes). 0 = the usual

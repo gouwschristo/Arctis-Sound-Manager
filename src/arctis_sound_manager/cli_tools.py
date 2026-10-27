@@ -93,9 +93,16 @@ def arctis_usb_info(vendor_id: int = 0x1038, bInterfaceClass: int = 0x03):
 # than opening a second USB handle, because the daemon holds the command
 # interface claimed exclusively — a standalone open here would just fail.
 
-def read_hardware_eq_via_dbus(timeout: float = 5.0) -> dict[str, Any]:
-    """Call the daemon's ReadHardwareEq D-Bus method, return the decoded dict."""
-    return _call_json_method('ReadHardwareEq', timeout)
+def read_hardware_eq_via_dbus(timeout: float = 5.0,
+                              bluetooth: bool = False) -> dict[str, Any]:
+    """Call the daemon's EQ read-back method, return the decoded dict.
+
+    ``bluetooth`` asks for the Bluetooth slot (connection_type 0x01) through
+    its own D-Bus member, so a mismatch between an installed asm-cli and
+    asm-daemon degrades to an error dict instead of a signature clash.
+    """
+    return _call_json_method('ReadHardwareEqBt' if bluetooth else 'ReadHardwareEq',
+                             timeout)
 
 
 def probe_device_via_dbus(timeout: float = 60.0) -> dict[str, Any]:
@@ -167,8 +174,10 @@ def print_hardware_eq_readback(result: dict[str, Any]) -> int:
         return 1
 
     conn = result.get('connection_type', 0)
-    print(f'Queried connection_type=0x{conn:02x} (0x00 = wireless — the slot '
-          f'the Custom EQ sliders write to)')
+    slot = ('the slot the Custom EQ sliders write to' if conn == 0
+            else 'the curve the headset uses over Bluetooth')
+    print(f'Queried connection_type=0x{conn:02x} (0x00 = wireless, '
+          f'0x01 = Bluetooth — {slot})')
     print()
 
     bands = result.get('bands')

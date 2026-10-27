@@ -95,6 +95,12 @@ device:
     format: parametric
     name_command: 0xa5
     band_command: 0x33
+    # The Bluetooth curve is a separate slot with its own band opcode; the
+    # name frame stays 0xA5 and only its connection byte changes (the spec's
+    # parametric_eq_bt replaces connection_type 0x00 -> 0x01 and
+    # eqband_command 0x33 -> 0x34). Set while on 2.4 GHz — the slot applies
+    # when the headset is used over Bluetooth, which no HID command reaches.
+    bt_band_command: 0x34
     # Unlike the Nova 7 Gen 2, the band frame does not repeat the connection
     # byte — including it would shift the whole curve by one byte.
     bands_carry_connection: false
@@ -110,6 +116,7 @@ device:
     # than signed decidecibels. 0x22 is the same frame for the BT curve.
     readback:
       band_query: 0x20
+      bt_band_query: 0x22
       name_query: 0xa6
       band_start: 1
       gain_encoding: offset_binary

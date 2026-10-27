@@ -64,6 +64,37 @@ PARAMETRIC_PROFILES = {
 }
 
 
+def test_nova5_curve_carries_the_biased_gain_bytes():
+    """0 dB must reach the headset as 0x14, not 0x00: written as 0x00 the
+    device reports (and applies) -10 dB, which was the state of this write
+    path until the read-back above was pointed at it."""
+    config = _config("nova_5.yaml")
+    engine = _engine(config)
+
+    assert CoreEngine.send_eq_command(engine, [20] * 10) is True
+    band_frame = [c.args[0] for c in engine.send_command.call_args_list][1]
+    start = len(band_frame) - 60          # opcode + optional connection byte
+    assert [band_frame[start + i * 6 + 3] for i in range(10)] == [0x14] * 10
+
+    # +6 dB on every band -> 0x20 (20 + 6*2)
+    assert CoreEngine.send_eq_command(engine, [32] * 10) is True
+    band_frame = [c.args[0] for c in engine.send_command.call_args_list][3]
+    start = len(band_frame) - 60
+    assert [band_frame[start + i * 6 + 3] for i in range(10)] == [0x20] * 10
+
+
+@pytest.mark.parametrize("profile", ["nova_7p_perc_battery.yaml", "nova_7_perc_battery.yaml"])
+def test_families_without_a_gain_encoding_keep_signed_bytes(profile):
+    """The Nova 7 family's spec really does use signed decidecibels; this
+    change must leave its frames untouched."""
+    config = _config(profile)
+    engine = _engine(config)
+
+    assert CoreEngine.send_eq_command(engine, [20] * 10) is True
+    band_frame = [c.args[0] for c in engine.send_command.call_args_list][1]
+    start = len(band_frame) - 60
+    assert [band_frame[start + i * 6 + 3] for i in range(10)] == [0x00] * 10
+
 # Profiles whose curve goes out as one HIDFEATURE chunk instead of command
 # frames. profile → (opcode at frame[1], chunk size)
 FEATURE_REPORT_PROFILES = {

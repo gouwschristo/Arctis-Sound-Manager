@@ -3522,6 +3522,13 @@ class CoreEngine:
                                   eq_format, self.device_config.name)
                 return False
             options = dict(self.device_config.hardware_eq_options)
+            if eq_format == 'parametric':
+                # Only this encoder takes the argument — elite_parametric has
+                # its own frame layout. Passing the profile's policy through
+                # rather than only the non-default ones keeps the encoding in
+                # one place: encode_parametric_eq's default would store 0x00
+                # for 0 dB, which the Nova 5 reads as -10 dB.
+                options['gain_encoding'] = self.device_config.hardware_eq_gain_encoding
             # Some families need the device to breathe between the name frame
             # and the bands: GG raises its inter-command delay to 600 ms there
             # (and its USB timeout to 1200 ms) for the Nova 5 and the GameBuds.

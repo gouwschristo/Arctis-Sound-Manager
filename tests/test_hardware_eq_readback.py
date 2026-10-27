@@ -710,3 +710,36 @@ def test_dbus_member_turns_an_engine_exception_into_readable_json():
     decoded = json.loads(payload)
     assert decoded["ok"] is False
     assert "device gone" in decoded["error"]
+
+
+# ── The text asm-cli prints, where the slots have to stay distinguishable ────
+
+def _readback_result(connection_type: int, bands=None) -> dict:
+    return {'ok': True, 'connection_type': connection_type,
+            'bands': bands if bands is not None else [
+                {'frequency': 32, 'gain_db': 0.0, 'q': 1.41, 'filter_type': 1}]}
+
+
+def test_cli_says_which_slot_it_read(capsys):
+    """Two curves with different meanings: telling the user which one this is
+    is the whole point of the --bluetooth flag."""
+    from arctis_sound_manager.cli_tools import print_hardware_eq_readback
+
+    print_hardware_eq_readback(_readback_result(0))
+    assert 'the slot the Custom EQ sliders write to' in capsys.readouterr().out
+
+    print_hardware_eq_readback(_readback_result(1))
+    assert 'the curve the headset uses over Bluetooth' in capsys.readouterr().out
+
+
+def test_cli_exit_code_is_zero_only_when_a_curve_came_back(capsys):
+    """Scripts read the exit code, so "no reply" must not look like success."""
+    from arctis_sound_manager.cli_tools import print_hardware_eq_readback
+
+    assert print_hardware_eq_readback(_readback_result(1)) == 0
+    capsys.readouterr()
+
+    no_reply = {'ok': True, 'connection_type': 1, 'bands': None,
+                'bands_error': 'timeout'}
+    assert print_hardware_eq_readback(no_reply) == 1
+    assert 'NO REPLY' in capsys.readouterr().out

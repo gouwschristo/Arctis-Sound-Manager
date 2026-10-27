@@ -3522,6 +3522,14 @@ class CoreEngine:
                                   eq_format, self.device_config.name)
                 return False
             options = dict(self.device_config.hardware_eq_options)
+            if (eq_format == 'parametric'
+                    and self.device_config.hardware_eq_gain_encoding != 'decibel_signed'):
+                # encode_parametric_eq defaults to signed decidecibels; a family
+                # that stores the biased byte must say so, or every band lands
+                # at the wrong gain (the Nova 5 would store 0x00 for 0 dB,
+                # which it reads as -10 dB). Only that encoder takes the
+                # argument — elite_parametric has its own frame layout.
+                options['gain_encoding'] = self.device_config.hardware_eq_gain_encoding
             # Some families need the device to breathe between the name frame
             # and the bands: GG raises its inter-command delay to 600 ms there
             # (and its USB timeout to 1200 ms) for the Nova 5 and the GameBuds.

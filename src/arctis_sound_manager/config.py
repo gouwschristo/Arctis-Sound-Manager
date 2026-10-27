@@ -355,6 +355,9 @@ class DeviceConfiguration:
     # the opcodes that encoder needs, and the firmware value meaning 0 dB.
     hardware_eq_format: str | None
     hardware_eq_options: dict[str, int]
+    # How this family writes a band's gain byte, in both directions: signed
+    # decidecibels (0 dB = 0x00) or the byte biased at 20 (0 dB = 0x14).
+    hardware_eq_gain_encoding: str
     hardware_eq_zero: int
     # Command selecting which stored preset the headset actually applies, for
     # families where writing the curve does not activate it, and the id of
@@ -509,6 +512,11 @@ class DeviceConfiguration:
         # flat run of gains name an encoder from hardware_eq.py here, plus the
         # opcodes that encoder needs.
         self.hardware_eq_format = hardware_eq.get('format', None)
+        # Shared by the write path and the read-back: a family that stored one
+        # encoding and reported the other would round-trip into a curve the
+        # user never asked for.
+        self.hardware_eq_gain_encoding = str(
+            hardware_eq.get('gain_encoding', 'decibel_signed'))
         self.hardware_eq_options = {
             key: int(value) for key, value in hardware_eq.items()
             if (key.endswith('_command') or key in ('frame_delay_ms', 'report_id'))

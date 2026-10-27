@@ -98,6 +98,11 @@ device:
     # Unlike the Nova 7 Gen 2, the band frame does not repeat the connection
     # byte — including it would shift the whole curve by one byte.
     bands_carry_connection: false
+    # Gains on this family are the biased byte, not signed decidecibels: its
+    # own Flat preset and GG's write path both store 0x14 for 0 dB (measured
+    # on a 1038:2232 — a curve written with 0x00 for 0 dB reads back as 0x00,
+    # i.e. -10 dB on this scale).
+    gain_encoding: offset_binary
     # GG raises its inter-command delay to 600 ms between the name and the
     # bands for this family, and its USB timeout with it.
     frame_delay_ms: 600

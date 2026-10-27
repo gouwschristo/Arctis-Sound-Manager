@@ -17,8 +17,9 @@ import pytest
 from arctis_sound_manager.hardware_eq import (CONNECTION_BLUETOOTH,
                                               CONNECTION_WIRELESS,
                                               DEFAULT_BAND_FREQUENCIES,
-                                              FILTER_PEAK, EqBand,
-                                              bands_from_gains, encode_band,
+                                              FILTER_PEAK, GAIN_OFFSET_BINARY,
+                                              EqBand, bands_from_gains,
+                                              decode_band, encode_band,
                                               encode_parametric_eq)
 
 
@@ -183,6 +184,38 @@ def test_band_frame_omits_the_connection_when_the_family_does():
     # The bands themselves are identical, only their offset differs.
     assert without[1][1:] == with_conn[1][2:]
 
+
+# ── Gain byte encoding: the same 0 dB is 0x00 on one family, 0x14 on another ─
+
+@pytest.mark.parametrize("gain_db, expected", [
+    (-10.0, 0x00), (-5.0, 0x0A), (0.0, 0x14), (0.5, 0x15), (6.0, 0x20), (10.0, 0x28),
+])
+def test_offset_binary_gain_is_the_biased_byte(gain_db, expected):
+    """The Nova 5's own Flat preset stores 0x14 behind 0 dB, and GG's write
+    path computes 20 + dB*2 — so a curve written with signed decidecibels
+    lands ten decibels low, silently."""
+    encoded = encode_band(EqBand(1000, gain_db), GAIN_OFFSET_BINARY)
+    assert encoded[3] == expected
+
+
+def test_offset_binary_round_trips_through_the_decoder():
+    for gain_db in (-10.0, -5.0, -3.5, 0.0, 2.5, 6.0, 10.0):
+        band = EqBand(1000, gain_db)
+        decoded = decode_band(encode_band(band, GAIN_OFFSET_BINARY), GAIN_OFFSET_BINARY)
+        assert decoded.gain_db == pytest.approx(gain_db)
+
+
+def test_signed_encoding_is_unchanged_for_other_families():
+    """Every family that never declares gain_encoding keeps byte-identical
+    frames — this change must not touch the Nova 7/Elite path."""
+    encoded = encode_band(EqBand(1000, 6.0))
+    assert encoded[3] == 0x3C            # 60 decidecibels, signed
+    assert encode_band(EqBand(1000, -3.5))[3] == 0xDD
+
+
+def test_unknown_gain_encoding_is_rejected():
+    with pytest.raises(ValueError):
+        encode_band(EqBand(1000, 0.0), "decibels_signed_typo")
 
 # ── Nova Elite (parametric_eq 0x1B, base_arctis_nova_elite_tx.device) ───────
 

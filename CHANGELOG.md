@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Arctis Nova 5 / 5X: read the stored equaliser curve back**, and the second curve the headset keeps for Bluetooth. `asm-cli tools read-hardware-eq` now answers for this family instead of reporting that its profile declares no read-back, which is what makes "the sliders move but nothing sounds different" answerable here too. Verified on a Nova 5 (1038:2232) — the Bluetooth slot by writing it back and reading it out, not by listening, since no Bluetooth host was paired. Not tried on the 5X variants.
+
 ### Fixed
 - **Arctis Nova 5 / 5X: the custom equaliser was written ten decibels low.** This family encodes a band's gain as the byte biased at 20 with half a decibel per step, not as signed decidecibels — its own Flat preset, GG's write path and its declared `create_filter_payload` all put `0x14` behind 0 dB. ASM sent `0x00`, which the headset stores and reads back verbatim, so every band sat about 10 dB down while the read-back agreed with the write. Measured on a Nova 5 (1038:2232); the 5X variants share this profile but have not been tried.
 

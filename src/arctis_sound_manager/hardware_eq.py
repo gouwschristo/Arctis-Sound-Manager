@@ -363,6 +363,8 @@ ENCODERS = {
 # This is the failure mode the raw hex in read_hardware_eq() exists for: at
 # offset 1 the reply still decoded into ten plausible-looking bands.
 
+
+
 def decode_band(data: bytes, gain_encoding: str = GAIN_DECIBEL_SIGNED) -> EqBand:
     """Six bytes → EqBand, the inverse of :func:`encode_band`.
 
@@ -402,23 +404,32 @@ _EQ_BAND_SIZE = 6
 _EQ_BAND_COUNT = 10
 
 
-def decode_eq_preset_data(response: list[int]) -> list[EqBand]:
-    """Decode a `get_eq_preset_data` (0x32) reply into its ten EqBand.
+def decode_eq_preset_data(response: list[int],
+                          band_start: int = _EQ_BAND_START,
+                          gain_encoding: str = GAIN_DECIBEL_SIGNED) -> list[EqBand]:
+    """Decode an EQ read-back reply into its ten EqBand.
+
+    The default layout is `get_eq_preset_data` (0x32) on the Nova 7 Gen 2
+    family: opcode echo at 0, connection_type echo at 1, band 1 at 2. Families
+    whose read-back is a different frame pass their own ``band_start`` and
+    ``gain_encoding`` — the Nova 5 reads the curve out of its audio settings
+    reply (0x20), which carries no connection_type echo (bands start at 1) and
+    uses the biased write-side gain byte.
 
     Raises ValueError if the reply is shorter than expected — deliberately,
     rather than returning bands built from padding. See the module-level note
     above for the offset this assumes and why.
     """
-    needed = _EQ_BAND_START + _EQ_BAND_SIZE * _EQ_BAND_COUNT
+    needed = band_start + _EQ_BAND_SIZE * _EQ_BAND_COUNT
     if len(response) < needed:
         raise ValueError(
-            f"get_eq_preset_data reply too short: got {len(response)} bytes, "
+            f"EQ read-back reply too short: got {len(response)} bytes, "
             f"need {needed}."
         )
     data = bytes(b & 0xFF for b in response)
     return [
-        decode_band(data[_EQ_BAND_START + i * _EQ_BAND_SIZE:
-                          _EQ_BAND_START + (i + 1) * _EQ_BAND_SIZE])
+        decode_band(data[band_start + i * _EQ_BAND_SIZE:
+                         band_start + (i + 1) * _EQ_BAND_SIZE], gain_encoding)
         for i in range(_EQ_BAND_COUNT)
     ]
 

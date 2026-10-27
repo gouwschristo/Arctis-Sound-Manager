@@ -664,6 +664,9 @@ def main():
              "(issue #146: Custom EQ sliders move but nothing audible changes)")
     read_eq_parser.add_argument('--json', action='store_true',
                                 help='Print the raw JSON reply instead of a table')
+    read_eq_parser.add_argument('--bluetooth', action='store_true',
+                                help='Read the Bluetooth slot (connection_type 0x01) '
+                                     'instead of the 2.4 GHz one')
 
     # One pass over the headset's read-only queries, for checking settings
     # taken from SteelSeries' spec on hardware we do not have: every reply
@@ -798,7 +801,7 @@ def main():
         elif args.action == 'read-hardware-eq':
             from arctis_sound_manager.cli_tools import (
                 print_hardware_eq_readback, read_hardware_eq_via_dbus)
-            result = read_hardware_eq_via_dbus()
+            result = read_hardware_eq_via_dbus(bluetooth=getattr(args, 'bluetooth', False))
             if args.json:
                 import json
                 print(json.dumps(result, indent=2))

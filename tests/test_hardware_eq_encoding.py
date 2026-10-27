@@ -217,6 +217,7 @@ def test_unknown_gain_encoding_is_rejected():
     with pytest.raises(ValueError):
         encode_band(EqBand(1000, 0.0), "decibels_signed_typo")
 
+
 # ── Nova Elite (parametric_eq 0x1B, base_arctis_nova_elite_tx.device) ───────
 
 def test_elite_frame_layout_follows_the_spec():

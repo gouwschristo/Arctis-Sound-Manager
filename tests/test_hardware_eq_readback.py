@@ -22,15 +22,18 @@ possible outcomes (curve back, reply but wrong, no reply at all).
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 import threading
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from ruamel.yaml import YAML
 
 from arctis_sound_manager.config import DeviceConfiguration
 from arctis_sound_manager.core import CoreEngine
+from arctis_sound_manager.dbus_service import ArctisManagerDbusSettingsService
 from arctis_sound_manager.hardware_eq import (GAIN_OFFSET_BINARY,
                                                decode_band,
                                                decode_eq_preset_data,
@@ -651,3 +654,59 @@ def test_resolve_raw_response_waiters_handles_empty_response_and_no_waiters():
     CoreEngine._resolve_raw_response_waiters(engine, [0xB0, 1, 2, 3])  # no one is waiting
 
     assert engine._raw_response_waiters == {}
+
+
+# ── The D-Bus boundary, where asm-cli actually meets this ────────────────────
+# dbus_next's @method decorator replaces the coroutine with one returning
+# None (a D-Bus out-arg is what carries the value), so reach the original
+# callable through the stored metadata — same pattern as
+# tests/test_dbus_settings_validation.py and tests/test_external_output_sink.py.
+
+_read_hardware_eq = ArctisManagerDbusSettingsService.read_hardware_eq.__dict__["__DBUS_METHOD"].fn
+_read_hardware_eq_bt = ArctisManagerDbusSettingsService.read_hardware_eq_bt.__dict__["__DBUS_METHOD"].fn
+
+
+def _make_dbus_service(result):
+    svc = ArctisManagerDbusSettingsService.__new__(ArctisManagerDbusSettingsService)
+    svc.core_engine = MagicMock()
+    svc.core_engine.read_hardware_eq = AsyncMock(return_value=result)
+    svc.logger = logging.getLogger("test_hardware_eq_readback.dbus")
+    return svc
+
+
+def test_dbus_bt_member_asks_the_engine_for_the_bluetooth_slot():
+    svc = _make_dbus_service({"ok": True, "bands": None})
+
+    asyncio.run(_read_hardware_eq_bt(svc))
+
+    svc.core_engine.read_hardware_eq.assert_awaited_once_with(connection_type=0x01)
+
+
+def test_dbus_plain_member_keeps_its_no_argument_call():
+    """Any argument here would be a signature change and an ABI break."""
+    svc = _make_dbus_service({"ok": True, "bands": None})
+
+    asyncio.run(_read_hardware_eq(svc))
+
+    svc.core_engine.read_hardware_eq.assert_awaited_once_with()
+
+
+def test_dbus_member_returns_the_engine_result_as_json():
+    result = {"ok": True, "bands": [0.0] * 10, "connection_type": 1}
+    svc = _make_dbus_service(result)
+
+    payload = asyncio.run(_read_hardware_eq_bt(svc))
+
+    assert json.loads(payload) == result
+
+
+def test_dbus_member_turns_an_engine_exception_into_readable_json():
+    """A raising engine must not become a D-Bus error the CLI cannot print."""
+    svc = _make_dbus_service({"ok": True})
+    svc.core_engine.read_hardware_eq = AsyncMock(side_effect=RuntimeError("device gone"))
+
+    payload = asyncio.run(_read_hardware_eq_bt(svc))
+
+    decoded = json.loads(payload)
+    assert decoded["ok"] is False
+    assert "device gone" in decoded["error"]

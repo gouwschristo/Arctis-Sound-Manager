@@ -364,7 +364,6 @@ ENCODERS = {
 # offset 1 the reply still decoded into ten plausible-looking bands.
 
 
-
 def decode_band(data: bytes, gain_encoding: str = GAIN_DECIBEL_SIGNED) -> EqBand:
     """Six bytes → EqBand, the inverse of :func:`encode_band`.
 

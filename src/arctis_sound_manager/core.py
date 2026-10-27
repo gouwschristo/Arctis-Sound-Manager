@@ -37,7 +37,8 @@ from arctis_sound_manager.settings import DeviceSettings, GeneralSettings
 from arctis_sound_manager.usb_devices_monitor import USBDevicesMonitor
 from arctis_sound_manager.charging_case import ChargingCaseMonitor
 from arctis_sound_manager.usb_reenumerate import (reset_via_usbfs,
-                                                  sysfs_device_dir)
+                                                  sysfs_device_dir,
+                                                  refresh_libusb_context, sysfs_has_device)
 from arctis_sound_manager.utils import ObservableDict
 from arctis_sound_manager.oled_manager import OledManager
 
@@ -125,6 +126,10 @@ _USB_PERMISSION_WATCH_INTERVAL = 30.0
 # Omni's mic noise reduction needs both: an on/off byte telling the firmware
 # which microphones are being adjusted, and a level the firmware requires to
 # stay >= 1 even while that feature is off.
+# How often configure_virtual_sinks may rebuild the libusb context when the
+# kernel lists a headset libusb does not (#325).
+_LIBUSB_REFRESH_MIN_S = 30.0
+
 _DERIVED_TOKENS = {
     'value.enabled': lambda value: 0 if value == 0 else 1,
     'value.at_least_1': lambda value: max(1, value),
@@ -2764,9 +2769,12 @@ class CoreEngine:
                     )
 
             if usb_device is None:
-                for device_config in self.device_configurations:
-                    usb_device = self._find_hid_device(device_config.vendor_id, device_config.product_ids)
-                    if usb_device is not None:
+                for attempt in range(2):
+                    for device_config in self.device_configurations:
+                        usb_device = self._find_hid_device(device_config.vendor_id, device_config.product_ids)
+                        if usb_device is not None:
+                            break
+                    if usb_device is not None or attempt or not self._libusb_list_is_stale():
                         break
 
             if not device_config or not usb_device:
@@ -4385,6 +4393,26 @@ class CoreEngine:
         except usb.core.USBError as e:
             self.logger.warning("Error reading feature report 0x%02x: %s", report_id, e)
             return None
+
+    def _libusb_list_is_stale(self) -> bool:
+        """When no headset was found but the kernel lists one: open a fresh
+        libusb context and say so, so the caller looks again (#325).
+
+        libusb's device list only follows hotplug events, and a dongle that
+        re-enumerated on resume can be missed from inside a container. At
+        most every 30 s, so a device the kernel lists for another reason
+        cannot make every 3-second rescan rebuild the context.
+        """
+        if not any(sysfs_has_device(c.vendor_id, c.product_ids)
+                   for c in self.device_configurations):
+            return False
+        now = time.monotonic()
+        if now - getattr(self, '_last_libusb_refresh', -_LIBUSB_REFRESH_MIN_S) < _LIBUSB_REFRESH_MIN_S:
+            return False
+        if not refresh_libusb_context(self.logger):
+            return False
+        self._last_libusb_refresh = now
+        return True
 
     def _find_hid_device(self, vendor_id: int, product_ids: list[int]) -> 'TypedDevice | None':
         """Find the first USB device matching vendor_id/product_ids that exposes an HID interface."""

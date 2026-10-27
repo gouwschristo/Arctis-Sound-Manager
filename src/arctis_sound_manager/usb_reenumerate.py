@@ -76,3 +76,50 @@ def toggle_authorized(device_dir: Path, settle_s: float, logger: Any) -> bool:
         logger.warning(
             "usb_reenumerate: authorized is not writable (root required); see docs (%r)", e)
         return False
+
+
+def sysfs_has_device(vendor_id: int, product_ids: list[int] | tuple[int, ...],
+                     sys_root: Path = Path('/sys/bus/usb/devices')) -> bool:
+    """True if the kernel lists a device with this vendor and one of these
+    product ids, whatever libusb currently believes."""
+    wanted = {f'{p:04x}' for p in product_ids}
+    vendor = f'{vendor_id:04x}'
+    try:
+        entries = list(sys_root.iterdir())
+    except OSError:
+        return False
+    for entry in entries:
+        try:
+            if ((entry / 'idVendor').read_text().strip() == vendor
+                    and (entry / 'idProduct').read_text().strip() in wanted):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def refresh_libusb_context(logger: Any) -> bool:
+    """Make the next usb.core.find() open a fresh libusb context.
+
+    With hotplug support, libusb never rescans the bus: libusb_get_device_list
+    returns the list its hotplug events keep up to date (libusb 1.0.30,
+    core.c). When the "device added" event never reaches this process — a
+    dongle re-enumerating on resume, seen from a distrobox container (#325) —
+    the device stays invisible until the process restarts. A new context
+    enumerates the bus from scratch.
+
+    pyusb caches one backend (usb.backend.libusb1._lib_object); dropping it
+    makes get_backend() build a new one, with its own libusb_init. Devices
+    already opened keep a reference to the old backend, which is only
+    released with them.
+    """
+    try:
+        import usb.backend.libusb1 as libusb1
+    except ImportError:
+        return False
+    if getattr(libusb1, '_lib_object', None) is None:
+        return False
+    libusb1._lib_object = None
+    logger.info("The kernel lists the headset but libusb does not: "
+                "opening a fresh libusb context to look again (#325)")
+    return True

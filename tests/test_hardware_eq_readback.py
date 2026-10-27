@@ -661,8 +661,9 @@ def test_resolve_raw_response_waiters_handles_empty_response_and_no_waiters():
 # callable through the stored metadata — same pattern as
 # tests/test_dbus_settings_validation.py and tests/test_external_output_sink.py.
 
-_read_hardware_eq = ArctisManagerDbusSettingsService.read_hardware_eq.__dict__["__DBUS_METHOD"].fn
-_read_hardware_eq_bt = ArctisManagerDbusSettingsService.read_hardware_eq_bt.__dict__["__DBUS_METHOD"].fn
+_dbus_method = ArctisManagerDbusSettingsService
+_read_hardware_eq = _dbus_method.read_hardware_eq.__dict__["__DBUS_METHOD"].fn
+_read_hardware_eq_bt = _dbus_method.read_hardware_eq_bt.__dict__["__DBUS_METHOD"].fn
 
 
 def _make_dbus_service(result):

@@ -801,7 +801,7 @@ def main():
         elif args.action == 'read-hardware-eq':
             from arctis_sound_manager.cli_tools import (
                 print_hardware_eq_readback, read_hardware_eq_via_dbus)
-            result = read_hardware_eq_via_dbus(bluetooth=getattr(args, 'bluetooth', False))
+            result = read_hardware_eq_via_dbus(bluetooth=args.bluetooth)
             if args.json:
                 import json
                 print(json.dumps(result, indent=2))

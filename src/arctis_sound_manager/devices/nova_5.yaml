@@ -123,7 +123,12 @@ device:
       band_query: 0x20
       bt_band_query: 0x22
       name_query: 0xa6
+      # 0x20 carries the ten bands straight after the opcode. 0x22 does not:
+      # it echoes connection_type first, so its bands start one byte later
+      # (measured on a 1038:2232 — decoding 0x22 at offset 1 gives ten bands
+      # of -9.5 dB, the connection byte read as a gain).
       band_start: 1
+      bt_band_start: 2
 
   online_status:
     status_variable: headset_power_status

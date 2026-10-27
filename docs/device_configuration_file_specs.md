@@ -110,13 +110,18 @@ hardware_eq:
     bt_band_query: 0x22         # OPTIONAL: a separate read for the Bluetooth slot
     name_query: 0xa6            # Preset-name read
     band_start: 1               # Offset of band 1 in the reply (0x32 echoes connection_type ⇒ 2)
+    bt_band_start: 2            # OPTIONAL: same offset for bt_band_query, when it differs
 ```
 
 ⚠️ The read-back defaults describe the `0x32` reply. A family whose reply differs must set
 `band_start`: the wrong offset still decodes into ten plausible-looking bands (32 Hz/LowShelf/−5.0 dB
 reads as 1024 Hz/type 10/−12.2 dB at offset 2), so it must come from a reply seen on the hardware,
-never by analogy with a sibling family. `gain_encoding` is shared with the write path — a family that
-stored one encoding and reported the other would round-trip into a curve nobody asked for.
+never by analogy with a sibling family. The Bluetooth reply can sit at a different offset from the
+2.4 GHz one — on a Nova 5, `0x22` echoes `connection_type` and `0x20` does not, and decoding `0x22` at
+offset 1 returns ten bands of −9.5 dB instead of the stored curve — so `bt_band_start` names it
+separately rather than assuming the two frames share a layout. `gain_encoding` is shared with the write
+path: a family that stored one encoding and reported the other would round-trip into a curve nobody
+asked for.
 
 ## YAML's device.settings.[section].[setting] types
 

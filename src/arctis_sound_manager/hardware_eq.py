@@ -403,6 +403,21 @@ _EQ_BAND_SIZE = 6
 _EQ_BAND_COUNT = 10
 
 
+def bands_are_plausible(bands: list[EqBand],
+                        low: int = 10, high: int = 24000) -> bool:
+    """Whether a decoded curve could be a real one: ten ascending bands.
+
+    Used only to choose between two candidate offsets for the same reply — a
+    reply read at the wrong offset still produces ten numbers, and they are not
+    a curve: the Nova 5's Bluetooth slot answering the older 61-byte shape
+    decodes to repeated frequencies when read one byte late.
+    """
+    freqs = [b.frequency for b in bands]
+    if not all(low <= f <= high for f in freqs):
+        return False
+    return all(a < b for a, b in zip(freqs, freqs[1:]))
+
+
 def decode_eq_preset_data(response: list[int],
                           band_start: int = _EQ_BAND_START,
                           gain_encoding: str = GAIN_DECIBEL_SIGNED) -> list[EqBand]:

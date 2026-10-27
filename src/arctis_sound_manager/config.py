@@ -118,7 +118,11 @@ class HardwareEqReadback:
     Two optional members cover families whose reply is not the 0x32 shape:
     `band_start` (offset of band 1; 0x32 echoes connection_type, so its bands
     start at 2) and `bt_band_query` (a separate frame for the Bluetooth slot,
-    e.g. the Nova 5's 0x22 next to its 0x20). How the gain byte is written is
+    e.g. the Nova 5's 0x22 next to its 0x20). `bt_band_start` exists because
+    the two replies can disagree: measured on a Nova 5, 0x20 carries the bands
+    straight after the opcode while 0x22 echoes connection_type, so its bands
+    start one byte later. Decoding 0x22 at 0x20's offset returns ten bands of
+    -9.5 dB — plausible-looking, and wrong. How the gain byte is written is
     the family's own `hardware_eq.gain_encoding`, shared with the write path —
     reading and writing a curve must agree or a round-trip silently drifts.
     Getting `band_start` wrong returns ten plausible bands, so it is only ever
@@ -127,7 +131,8 @@ class HardwareEqReadback:
     """
 
     def __init__(self, band_query: int, name_query: int, connection_type: int = 0x00,
-                 band_start: int = 2, bt_band_query: int | None = None):
+                 band_start: int = 2, bt_band_query: int | None = None,
+                 bt_band_start: int | None = None):
         self.band_query = int(band_query)
         # Query for the Bluetooth curve when the family has a separate one
         # (Nova 5: 0x22, where 0x20 is the 2.4 GHz curve). None means the same
@@ -138,6 +143,9 @@ class HardwareEqReadback:
         # Where band 1 sits in the reply. Family-specific: 0x32 echoes
         # connection_type (band 1 at 2), the Nova 5's 0x20 does not (at 1).
         self.band_start = int(band_start)
+        # Where band 1 sits in the Bluetooth reply, when it differs from
+        # band_start. None means both frames share the layout.
+        self.bt_band_start = int(bt_band_start) if bt_band_start is not None else None
 
 
 class ConfigStatusResponseMapping:

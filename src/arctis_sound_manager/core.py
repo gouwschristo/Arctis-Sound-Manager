@@ -4851,6 +4851,7 @@ class CoreEngine:
             return {'ok': False, 'error': 'unsupported'}
 
         from arctis_sound_manager.hardware_eq import (CONNECTION_BLUETOOTH,
+                                                       bands_are_plausible,
                                                        decode_eq_preset_data,
                                                        decode_eq_preset_name)
 
@@ -4862,8 +4863,15 @@ class CoreEngine:
         # Some families answer with a different frame per connection: the
         # Nova 5's 0x20 carries the 2.4 GHz curve and 0x22 the Bluetooth one.
         band_query = readback.band_query
+        band_start = readback.band_start
         if conn == CONNECTION_BLUETOOTH and readback.bt_band_query is not None:
             band_query = readback.bt_band_query
+            # The Bluetooth frame is not just a different opcode: on the Nova 5
+            # it also echoes connection_type, so its bands sit one byte later
+            # than 0x20's. Reading them at 0x20's offset yields ten bands of
+            # -9.5 dB — the connection byte picked up as a gain.
+            if readback.bt_band_start is not None:
+                band_start = readback.bt_band_start
 
         result: dict = {'ok': True, 'connection_type': conn}
 
@@ -4884,14 +4892,32 @@ class CoreEngine:
             # the hex — it is what let the offset be corrected from a user
             # report instead of believed.
             result['bands_raw'] = ' '.join(f'{b & 0xFF:02x}' for b in band_response)
+            # The declared offset is tried first; the other one only if the
+            # reply is not a curve at it. A Bluetooth slot that has never been
+            # written answers the older 61-byte shape on the Nova 5, which
+            # decodes to repeated frequencies one byte late.
+            candidates = [band_start]
+            if readback.band_start != band_start:
+                candidates.append(readback.band_start)
             try:
+                decoded = None
+                for offset in candidates:
+                    attempt = decode_eq_preset_data(
+                        band_response,
+                        band_start=offset,
+                        gain_encoding=self.device_config.hardware_eq_gain_encoding)
+                    if bands_are_plausible(attempt):
+                        decoded = attempt
+                        if offset != band_start:
+                            self.logger.info(
+                                "EQ read-back answered the %d-byte shape at "
+                                "offset %d, not %d — decoded from there.",
+                                len(band_response), offset, band_start)
+                        break
                 result['bands'] = [
                     {'frequency': b.frequency, 'gain_db': b.gain_db,
                      'q': b.q, 'filter_type': b.filter_type}
-                    for b in decode_eq_preset_data(
-                        band_response,
-                        band_start=readback.band_start,
-                        gain_encoding=self.device_config.hardware_eq_gain_encoding)
+                    for b in (decoded or attempt)
                 ]
             except ValueError as e:
                 result['bands'] = None

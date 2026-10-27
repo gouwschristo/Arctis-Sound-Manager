@@ -743,3 +743,67 @@ def test_cli_exit_code_is_zero_only_when_a_curve_came_back(capsys):
                 'bands_error': 'timeout'}
     assert print_hardware_eq_readback(no_reply) == 1
     assert 'NO REPLY' in capsys.readouterr().out
+
+
+# ── The Bluetooth reply is not just another opcode ──────────────────────────
+# Measured on a 1038:2232 with +10 dB on band 1 and -10 dB on the rest written
+# into the Bluetooth slot: 0x20 puts the bands straight after the opcode, 0x22
+# echoes connection_type first. Reading 0x22 at 0x20's offset picks up that
+# echo byte as a gain and returns ten plausible bands of -9.5 dB.
+
+_REAL_0X22 = bytes([
+    0x22, 0x01, 0x20, 0x00, 0x01, 0x28, 0x82, 0x05, 0x40, 0x00, 0x01, 0x00,
+    0x82, 0x05, 0x7d, 0x00, 0x01, 0x00, 0x82, 0x05, 0xfa, 0x00, 0x01, 0x00,
+    0x82, 0x05, 0xf4, 0x01, 0x01, 0x00, 0x82, 0x05, 0xe8, 0x03, 0x01, 0x00,
+    0x82, 0x05, 0xd0, 0x07, 0x01, 0x00, 0x82, 0x05, 0xa0, 0x0f, 0x01, 0x00,
+    0x82, 0x05, 0x40, 0x1f, 0x01, 0x00, 0x82, 0x05, 0x80, 0x3e, 0x01, 0x00,
+    0x82, 0x0f, 0x00, 0x01,
+])
+
+
+def test_bluetooth_reply_decodes_at_its_own_offset():
+    bands = decode_eq_preset_data(list(_REAL_0X22), band_start=2,
+                                  gain_encoding=GAIN_OFFSET_BINARY)
+
+    assert [b.frequency for b in bands] == [32, 64, 125, 250, 500, 1000,
+                                            2000, 4000, 8000, 16000]
+    assert [b.gain_db for b in bands] == [10.0] + [-10.0] * 9
+
+
+def test_bluetooth_reply_at_the_wireless_offset_is_the_silent_misread():
+    """Why bt_band_start exists: the wrong offset looks like a whole curve."""
+    bands = decode_eq_preset_data(list(_REAL_0X22), band_start=1,
+                                  gain_encoding=GAIN_OFFSET_BINARY)
+
+    assert [b.gain_db for b in bands] == [-9.5] * 10
+    assert [b.frequency for b in bands] != [32, 64, 125, 250, 500, 1000,
+                                            2000, 4000, 8000, 16000]
+
+
+def test_nova5_profile_declares_both_offsets():
+    """The knobs only help if the profile actually sets them."""
+    cfg = YAML(typ="safe").load(
+        Path(__file__).parent.parent / "src" / "arctis_sound_manager" / "devices" / "nova_5.yaml")
+    readback = DeviceConfiguration(cfg).hardware_eq_readback
+
+    assert (readback.band_start, readback.bt_band_start) == (1, 2)
+
+
+def test_bluetooth_reply_without_the_echo_falls_back_to_the_shared_offset():
+    """Two shapes come back from 0x22: the parametric one echoes
+    connection_type, the other does not. A fixed offset would misread one of
+    them, so the declared offset is tried first and the reply decides."""
+    no_echo = bytes([0x22] + list(_REAL_0X22[2:])[:-1] + [0x00])
+    engine = _engine(_config("nova_5.yaml"))
+    engine.send_command = MagicMock()
+
+    async def fake_await(opcode, timeout=2.0):
+        return list(no_echo) if opcode == 0x22 else None
+    engine._await_raw_response = fake_await
+
+    result = asyncio.run(CoreEngine.read_hardware_eq(engine, connection_type=0x01))
+
+    assert [b["frequency"] for b in result["bands"]] == [32, 64, 125, 250, 500,
+                                                         1000, 2000, 4000, 8000, 16000]
+    # Same curve as the echoed frame, just without the leading connection byte.
+    assert [b["gain_db"] for b in result["bands"]] == [10.0] + [-10.0] * 9

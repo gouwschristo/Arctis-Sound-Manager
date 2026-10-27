@@ -472,6 +472,23 @@ class ArctisManagerDbusSettingsService(ServiceInterface):
             result = {'ok': False, 'error': f'internal_error: {e!r}'}
         return json.dumps(result)
 
+    @method('ReadHardwareEqBt')
+    async def read_hardware_eq_bt(self) -> 's': # type: ignore
+        """ReadHardwareEq for the Bluetooth slot (connection_type 0x01).
+
+        A separate member rather than an argument: adding a parameter to
+        ReadHardwareEq would break every installed asm-cli talking to a newer
+        daemon (and the reverse), and the two answers differ only in which
+        slot is queried. Families with one frame for both connections answer
+        the same either way — read_hardware_eq() falls back to band_query.
+        """
+        try:
+            result = await self.core_engine.read_hardware_eq(connection_type=0x01)
+        except Exception as e:
+            self.logger.error(f'ReadHardwareEqBt error: {e}')
+            result = {'ok': False, 'error': f'internal_error: {e!r}'}
+        return json.dumps(result)
+
     @method('ProbeDevice')
     async def probe_device(self) -> 's': # type: ignore
         """Send the profile's read-only probe queries, return the raw replies.

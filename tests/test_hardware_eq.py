@@ -64,6 +64,61 @@ PARAMETRIC_PROFILES = {
 }
 
 
+# ── The Nova 5's Bluetooth slot (write 0x34, connection 0x01) ──────────────
+
+def test_nova5_bluetooth_curve_uses_its_own_band_opcode():
+    """The slot is written while the headset is on 2.4 GHz: the name frame is
+    the same 0xA5 with connection 0x01, but the bands go out as 0x34. Sending
+    them as 0x33 would silently overwrite the curve in use."""
+    engine = _engine(_config("nova_5.yaml"))
+
+    assert CoreEngine.send_eq_command(engine, [20] * 10, 0x01) is True
+
+    frames = [call.args[0] for call in engine.send_command.call_args_list]
+    assert frames[0][:2] == [0xA5, 0x01]
+    assert frames[1][0] == 0x34
+    assert len(frames[1]) == 1 + 60          # no connection byte in this family
+
+
+def test_nova5_wireless_curve_still_uses_0x33():
+    engine = _engine(_config("nova_5.yaml"))
+
+    assert CoreEngine.send_eq_command(engine, [20] * 10) is True
+
+    frames = [call.args[0] for call in engine.send_command.call_args_list]
+    assert frames[0][:2] == [0xA5, 0x00]
+    assert frames[1][0] == 0x33
+
+
+def test_bluetooth_write_is_refused_when_the_family_has_no_bt_command():
+    """Families with one band frame per radio mode must not be sent a
+    connection they cannot address — that would rewrite the live curve."""
+    engine = _engine(_config("nova_7p_perc_battery.yaml"))
+
+    assert CoreEngine.send_eq_command(engine, [20] * 10, 0x01) is False
+    engine.send_command.assert_not_called()
+
+
+def test_bt_band_command_is_not_forwarded_to_the_encoder():
+    """`bt_band_command` ends in `_command`, and every such key is passed to the
+    encoder as a keyword argument — leaving it in raised TypeError on every
+    parametric write, so the guarantee is pinned here rather than implied."""
+    config = _config("nova_5.yaml")
+
+    assert config.hardware_eq_bt_band_command == 0x34
+    assert 'bt_band_command' not in config.hardware_eq_options
+    # The keys the encoder does take are still there.
+    assert config.hardware_eq_options['band_command'] == 0x33
+    assert config.hardware_eq_options['name_command'] == 0xA5
+
+
+def test_write_for_an_unknown_connection_is_refused():
+    engine = _engine(_config("nova_5.yaml"))
+
+    assert CoreEngine.send_eq_command(engine, [20] * 10, 0x02) is False
+    engine.send_command.assert_not_called()
+
+
 def test_nova5_curve_carries_the_biased_gain_bytes():
     """0 dB must reach the headset as 0x14, not 0x00: written as 0x00 the
     device reports (and applies) -10 dB, which was the state of this write
@@ -94,6 +149,7 @@ def test_families_without_a_gain_encoding_keep_signed_bytes(profile):
     band_frame = [c.args[0] for c in engine.send_command.call_args_list][1]
     start = len(band_frame) - 60
     assert [band_frame[start + i * 6 + 3] for i in range(10)] == [0x00] * 10
+
 
 # Profiles whose curve goes out as one HIDFEATURE chunk instead of command
 # frames. profile → (opcode at frame[1], chunk size)

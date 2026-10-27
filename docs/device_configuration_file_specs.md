@@ -80,6 +80,44 @@ device:
 
 ⚠️ The `status_parse` section of `media_mix` and `chat_mix` requires the values to be normalized between 0 and 100.
 
+## YAML's device.hardware_eq section
+
+OPTIONAL. How the custom EQ reaches the headset's own equaliser, for models that have one ASM can
+drive. Omit the section entirely when the model has none — the curve then stays software-side and
+neither the GUI nor `asm-cli tools read-hardware-eq` offers a hardware one.
+
+```yaml
+hardware_eq:
+  format: parametric            # Encoder name from hardware_eq.ENCODERS, for families whose curve is a
+                                # parametric description over several frames. Omit for families that
+                                # take one command of flat gain bytes
+  band_command: 0x33            # Opcode of the band frame (parametric families)
+  bt_band_command: 0x34         # OPTIONAL: the same frame for the Bluetooth slot, for families that
+                                # store one curve per radio mode. Omit ⇒ a write for connection 0x01 is
+                                # refused rather than aimed at the live 2.4 GHz curve
+  name_command: 0xa5            # Opcode of the preset-name frame (parametric families)
+  bands_carry_connection: false # Whether the band frame repeats connection_type after the opcode
+  gain_encoding: offset_binary  # How a band's gain byte is written, in both directions:
+                                # decibel_signed (0 dB = 0x00) | offset_binary (0 dB = 0x14)
+  frame_delay_ms: 600           # Gap between the name frame and the band frame, for devices that
+                                # abandon the curve when they follow too closely
+  band_layout: graphic          # How ASM's sliders become bands: graphic | shelving
+  range_db: 10                  # Gain the on-device curve reaches either way
+  zero_at: 20                   # Firmware value standing for 0 dB
+  feature_report_size: 0        # Non-zero for families whose curve goes out as one HIDFEATURE chunk
+  readback:                     # OPTIONAL: opcodes to read the stored curve back
+    band_query: 0x20            # Curve read (0x32 on most parametric families)
+    bt_band_query: 0x22         # OPTIONAL: a separate read for the Bluetooth slot
+    name_query: 0xa6            # Preset-name read
+    band_start: 1               # Offset of band 1 in the reply (0x32 echoes connection_type ⇒ 2)
+```
+
+⚠️ The read-back defaults describe the `0x32` reply. A family whose reply differs must set
+`band_start`: the wrong offset still decodes into ten plausible-looking bands (32 Hz/LowShelf/−5.0 dB
+reads as 1024 Hz/type 10/−12.2 dB at offset 2), so it must come from a reply seen on the hardware,
+never by analogy with a sibling family. `gain_encoding` is shared with the write path — a family that
+stored one encoding and reported the other would round-trip into a curve nobody asked for.
+
 ## YAML's device.settings.[section].[setting] types
 
 Arctis Sound Manager supports out of the box the following settings. Additional types need to be implemented in the code.

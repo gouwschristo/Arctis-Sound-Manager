@@ -52,20 +52,51 @@ class EqBand:
     filter_type: int = FILTER_PEAK
 
 
-def encode_band(band: EqBand) -> bytes:
+#: How a band's gain byte is encoded, in both directions. The encoding is not
+#: the same across families and getting it wrong is silent — the same 0 dB is
+#: 0x00 on one family and 0x14 on another, and both decode into plausible
+#: numbers.
+#:
+#: * ``decibel_signed`` — signed decidecibels, 0 dB = 0x00, +12 dB = 0x78
+#:   (the Nova 7 Gen 2 family).
+#: * ``offset_binary`` — biased at 20 with half a decibel per step, 0 dB =
+#:   0x14, +6 dB = 0x20 (the Nova 5: its own Flat preset and GG's write path
+#:   both put 0x14 behind 0 dB).
+GAIN_DECIBEL_SIGNED = 'decibel_signed'
+GAIN_OFFSET_BINARY = 'offset_binary'
+GAIN_ENCODINGS = (GAIN_DECIBEL_SIGNED, GAIN_OFFSET_BINARY)
+
+#: Bias of the ``offset_binary`` gain byte: 20 == 0 dB.
+_OFFSET_BINARY_ZERO = 20
+
+
+def encode_band(band: EqBand, gain_encoding: str = GAIN_DECIBEL_SIGNED) -> bytes:
     """Six bytes: frequency, filter type, gain, Q.
 
-    Gain is decidecibels in a signed byte — the specs spell out 0 dB = 0x00,
-    12 dB = 0x78, -12 dB = 0x88 — and Q is thousandths in 16 bits, both
-    little-endian like every other multi-byte field in these frames.
+    Q is thousandths in 16 bits, little-endian like frequency, in both
+    encodings. The gain byte differs per family, and the difference is silent:
+    the same 0 dB is 0x00 on one and 0x14 on the other.
+
+    * ``decibel_signed`` — signed decidecibels (0 dB = 0x00, +12 dB = 0x78,
+      −12 dB = 0x88), as the Nova 7 Gen 2 family's spec spells out.
+    * ``offset_binary`` — the byte biased at 20 with half a decibel per step
+      (0 dB = 0x14, +6 dB = 0x20), which is what the Nova 5 stores: its own
+      Flat preset and GG's own write path both put 0x14 behind 0 dB.
     """
+    if gain_encoding not in GAIN_ENCODINGS:
+        raise ValueError(f"unknown gain encoding {gain_encoding!r}")
     frequency = max(20, min(20000, int(round(band.frequency))))
-    gain = max(-128, min(127, int(round(band.gain_db * 10))))
     q = max(200, min(10000, int(round(band.q * 1000))))
+    if gain_encoding == GAIN_OFFSET_BINARY:
+        gain = max(0, min(0xFF, _OFFSET_BINARY_ZERO + int(round(band.gain_db * 2))))
+        encoded_gain = bytes([gain])
+    else:
+        gain = max(-128, min(127, int(round(band.gain_db * 10))))
+        encoded_gain = gain.to_bytes(1, "little", signed=True)
     return (
         frequency.to_bytes(2, "little")
         + bytes([band.filter_type & 0xFF])
-        + gain.to_bytes(1, "little", signed=True)
+        + encoded_gain
         + q.to_bytes(2, "little")
     )
 
@@ -112,7 +143,8 @@ def encode_parametric_eq(bands: list[EqBand], name: str = "Custom",
                          name_command: int = 0xA7,
                          band_command: int = 0x33,
                          commit_command: int | None = None,
-                         bands_carry_connection: bool = True) -> list[list[int]]:
+                         bands_carry_connection: bool = True,
+                         gain_encoding: str = GAIN_DECIBEL_SIGNED) -> list[list[int]]:
     """Frames for the parametric families (Nova 7 Gen 2: 0xA7, Nova 5: 0xA5).
 
     Each frame starts with its **opcode**, not with the `report_id` the specs
@@ -154,7 +186,7 @@ def encode_parametric_eq(bands: list[EqBand], name: str = "Custom",
     name_bytes = list(name.encode("ascii", errors="ignore")[:32])
     payload: list[int] = []
     for band in bands:
-        payload += list(encode_band(band))
+        payload += list(encode_band(band, gain_encoding))
 
     band_frame = [band_command]
     if bands_carry_connection:
@@ -331,23 +363,31 @@ ENCODERS = {
 # This is the failure mode the raw hex in read_hardware_eq() exists for: at
 # offset 1 the reply still decoded into ten plausible-looking bands.
 
-def decode_band(data: bytes) -> EqBand:
+
+def decode_band(data: bytes, gain_encoding: str = GAIN_DECIBEL_SIGNED) -> EqBand:
     """Six bytes → EqBand, the inverse of :func:`encode_band`.
 
     The *incoming* eqBand struct uses narrower types than the outgoing one:
-    gain is a plain signed byte (not the float32 encode_band's caller
-    produces) and Q is a 16-bit unsigned value of thousandths (not float32).
-    Decoding with the outgoing widths would misread every band.
+    gain is a single byte (not the float32 encode_band's caller produces) and
+    Q is a 16-bit unsigned value of thousandths (not float32). Decoding with
+    the outgoing widths would misread every band.
+
+    ``gain_encoding`` picks how that gain byte is read; see GAIN_ENCODINGS.
     """
     if len(data) < 6:
         raise ValueError(f"eq band frame too short: {len(data)} bytes (need 6)")
+    if gain_encoding not in GAIN_ENCODINGS:
+        raise ValueError(f"unknown gain encoding {gain_encoding!r}")
     frequency = int.from_bytes(data[0:2], "little")
     filter_type = data[2]
-    gain_raw = int.from_bytes(data[3:4], "little", signed=True)
+    if gain_encoding == GAIN_OFFSET_BINARY:
+        gain_db = (data[3] - _OFFSET_BINARY_ZERO) / 2
+    else:
+        gain_db = int.from_bytes(data[3:4], "little", signed=True) / 10
     q_raw = int.from_bytes(data[4:6], "little")
     return EqBand(
         frequency=frequency,
-        gain_db=gain_raw / 10,
+        gain_db=gain_db,
         q=q_raw / 1000,
         filter_type=filter_type,
     )

@@ -12,6 +12,8 @@ from ruamel.yaml import YAML
 
 from arctis_sound_manager import status_parser_fn
 from arctis_sound_manager.constants import DEVICES_CONFIG_FOLDER
+from arctis_sound_manager.hardware_eq import (GAIN_DECIBEL_SIGNED,
+                                              GAIN_ENCODINGS)
 from arctis_sound_manager.utils import JsonSerializable
 
 
@@ -355,6 +357,9 @@ class DeviceConfiguration:
     # the opcodes that encoder needs, and the firmware value meaning 0 dB.
     hardware_eq_format: str | None
     hardware_eq_options: dict[str, int]
+    # How this family writes a band's gain byte, in both directions: signed
+    # decidecibels (0 dB = 0x00) or the byte biased at 20 (0 dB = 0x14).
+    hardware_eq_gain_encoding: str
     hardware_eq_zero: int
     # Command selecting which stored preset the headset actually applies, for
     # families where writing the curve does not activate it, and the id of
@@ -509,6 +514,18 @@ class DeviceConfiguration:
         # flat run of gains name an encoder from hardware_eq.py here, plus the
         # opcodes that encoder needs.
         self.hardware_eq_format = hardware_eq.get('format', None)
+        # Shared by the write path and the read-back: a family that stored one
+        # encoding and reported the other would round-trip into a curve the
+        # user never asked for.
+        self.hardware_eq_gain_encoding = str(
+            hardware_eq.get('gain_encoding', GAIN_DECIBEL_SIGNED))
+        # Fail at load, like SettingsReadback does: an unknown encoding would
+        # otherwise only surface as a ValueError out of the encoder the first
+        # time someone moved an EQ slider.
+        if self.hardware_eq_gain_encoding not in GAIN_ENCODINGS:
+            raise ValueError(
+                "Invalid configuration: hardware_eq.gain_encoding must be one of "
+                f"{', '.join(GAIN_ENCODINGS)}, not {self.hardware_eq_gain_encoding!r}")
         self.hardware_eq_options = {
             key: int(value) for key, value in hardware_eq.items()
             if (key.endswith('_command') or key in ('frame_delay_ms', 'report_id'))

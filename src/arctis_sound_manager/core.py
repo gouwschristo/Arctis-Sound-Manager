@@ -4914,10 +4914,20 @@ class CoreEngine:
                                 "offset %d, not %d — decoded from there.",
                                 len(band_response), offset, band_start)
                         break
+                if decoded is None:
+                    # Neither offset produced a curve. Reporting the last
+                    # attempt would present a misread as a real curve - the
+                    # Nova 5's Bluetooth slot returns a corrupted tail when the
+                    # headset is in Bluetooth mode, which decodes to
+                    # 8193 Hz / -9.5 dB. Say so instead; bands_raw is already
+                    # in the result for whoever wants to look.
+                    raise ValueError(
+                        'reply does not decode to a curve at any known offset '
+                        f'(tried {candidates})')
                 result['bands'] = [
                     {'frequency': b.frequency, 'gain_db': b.gain_db,
                      'q': b.q, 'filter_type': b.filter_type}
-                    for b in (decoded or attempt)
+                    for b in decoded
                 ]
             except ValueError as e:
                 result['bands'] = None

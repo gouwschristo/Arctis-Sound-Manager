@@ -807,3 +807,25 @@ def test_bluetooth_reply_without_the_echo_falls_back_to_the_shared_offset():
                                                          1000, 2000, 4000, 8000, 16000]
     # Same curve as the echoed frame, just without the leading connection byte.
     assert [b["gain_db"] for b in result["bands"]] == [10.0] + [-10.0] * 9
+
+
+def test_a_corrupted_reply_is_refused_rather_than_presented_as_a_curve():
+    """Observed on a Nova 5 with the headset in Bluetooth mode: 0x22 returned
+    a corrupted tail (frequencies 32, 64, 78, 78, 78…), which decodes to
+    8193 Hz / -9.5 dB if you fall back to the wireless offset. A wrong curve
+    that looks real is worse than no curve."""
+    corrupted = bytes.fromhex(
+        '22012000011482 054000011482 214e0001148221 4e0001148221 4e0101148221'
+        '4e0301148221 4e0701148221 4e0f011482 05401f0114 82214e3e011482 000002'.replace(' ', ''))
+    engine = _engine(_config("nova_5.yaml"))
+    engine.send_command = MagicMock()
+
+    async def fake_await(opcode, timeout=2.0):
+        return list(corrupted)
+    engine._await_raw_response = fake_await
+
+    result = asyncio.run(CoreEngine.read_hardware_eq(engine, connection_type=0x01))
+
+    assert result["bands"] is None
+    assert result["bands_error"].startswith("decode_error:")
+    assert result["bands_raw"]  # still shipped, so it can be reported
